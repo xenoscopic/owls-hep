@@ -1,0 +1,22 @@
+# Set the project language
+# NOTE: We have to specify Python or we can't use pip for some reason (it's a
+# permissions thing).  In any case, we're still okay to use checkbashisms if we
+# use Python.
+language: python
+
+# Install build dependencies
+install:
+  - sudo apt-get -qq update
+  - sudo apt-get -qq install devscripts
+  - pip install pep8
+
+# Check script and module formatting
+script:
+  - checkbashisms scripts/run-tests.sh
+  - checkbashisms scripts/run-pep8.sh
+  - pep8 modules/version_check.py
+
+# Send notifications
+notifications:
+  email:
+    - jacob@havoc.io
