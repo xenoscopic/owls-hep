@@ -64,6 +64,7 @@ class RootNumpyDataLoadingBackend(DataLoadingBackend):
         # loaded
         tree_weight_property = options.get('tree_weight_property', None)
 
+        # Load the data
         return DataFrame(root2array(
             filenames = url_or_urls,
             treename = tree,
