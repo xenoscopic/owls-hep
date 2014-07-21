@@ -6,6 +6,9 @@ region.
 # System imports
 from uuid import uuid4
 
+# Six imports
+from six import string_types
+
 # ROOT imports
 from ROOT import TH1F, TH2F, TH3F
 
@@ -99,8 +102,16 @@ def _numpy_to_root_histogram(histogram, name = None, title = None):
     return result
 
 
-# TODO: Create proper dummy function
-@parallelized(lambda p, r, e, b: 0, lambda p, r, e, b: p)
+# Dummy function to return fake values when parallelizing
+def _dummy_histogram(process, region, expressions, binnings):
+    # Create a unique id
+    name_title = uuid4().hex
+
+    # Create a bogus histogram
+    return TH1F(name_title, name_title, 100, 0, 100)
+
+
+@parallelized(_dummy_histogram, lambda p, r, e, b: p)
 @styled
 @persistently_cached
 def histogram(process, region, expressions, binnings):
@@ -142,7 +153,14 @@ def histogram(process, region, expressions, binnings):
     region_weighted_selection = weighted_selection(region)
 
     # Compute the weighted selection properties
-    region_properties = properties(region_weighted_selection)
+    required_properties = properties(region_weighted_selection)
+
+    # Add in properties for expressions
+    if isinstance(expressions, string_types):
+        required_properties.update(properties(expressions))
+    else:
+        for expression in expressions:
+            required_properties.update(properties(expression))
 
     # Create the NumPy histogram
     numpy_result = data_histogram(
