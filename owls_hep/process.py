@@ -3,10 +3,11 @@
 Processes are encoded as Python dictionaries with the following entries:
 
 - 'label': The TLatex label to use for the process
-- 'line_color': The line color to use for the process in plots, either a
-  hexidecimal code of the form '#xxxxxx' or a numeric ROOT color code
-- 'fill_color': The fill color to use for the process in plots, either a
-  hexidecimal code of the form '#xxxxxx' or a numeric ROOT color code
+- 'line_color': The line color to use for the process in plots, as a
+  hexidecimal code of the form '#xxxxxx'
+- 'fill_color': The fill color to use for the process in plots, as a
+  hexidecimal code of the form '#xxxxxx'
+- 'marker_style': The marker style to use, as a string, empty for no style
 - 'files': The ROOT files from which to load data, encoded as a list of partial
   URLs relative to some base
 - 'patches': A tuple of functions to be applied to loaded data
@@ -25,6 +26,7 @@ default values:
 
 - 'line_color': The default line color
 - 'fill_color': The default fill color
+- 'marker_style': The default marker style
 - 'files_prefix': The base of all file URLs
 - 'tree': The default tree to use
 
@@ -38,6 +40,10 @@ The patches tuple will always default to empty.
 
 # System imports
 from copy import deepcopy
+from functools import wraps
+
+# ROOT imports
+from ROOT import TColor
 
 # owls-config imports
 from owls_config import load as load_config
@@ -167,3 +173,34 @@ def load(process, branches):
 
     # All done
     return result
+
+
+def styled(f):
+    """Decorator which provides styling capability for functions returning
+    THN objects.  The wrapper function should accept a process configuration
+    dictionary as its first argument.
+    """
+    # Create the wrapper function
+    @wraps(f)
+    def wrapper(process, *args, **kwargs):
+        # Compute the result
+        result = f(process, *args, **kwargs)
+
+        # Get style
+        line_color = process['line_color']
+        fill_color = process['fill_color']
+        marker_style = process['marker_style']
+
+        # Apply style
+        result.SetLineColor(TColor.GetColor(line_color))
+        result.SetFillColor(TColor.GetColor(fill_color))
+        if marker_style != '':
+            result.SetMarkerStyle(marker_style)
+            result.SetMarkerSize(1)
+            result.SetMarkerColor(result.GetLineColor())
+
+        # All done
+        return result
+
+    # Return the wrapper function
+    return wrapper

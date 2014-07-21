@@ -20,7 +20,7 @@ from owls_data.histogramming import histogram as data_histogram
 from owls_parallel import parallelized
 
 # owls-hep imports
-from owls_hep.process import load
+from owls_hep.process import load, styled
 from owls_hep.region import weighted_selection
 
 
@@ -101,6 +101,7 @@ def _numpy_to_root_histogram(histogram, name = None, title = None):
 
 # TODO: Create proper dummy function
 @parallelized(lambda p, r, e, b: 0, lambda p, r, e, b: p)
+@styled
 @persistently_cached
 def histogram(process, region, expressions, binnings):
     """Generates a ROOT histogram of the specified event properties in the
@@ -153,9 +154,6 @@ def histogram(process, region, expressions, binnings):
 
     # Compute the result
     result = _numpy_to_root_histogram(numpy_result)
-
-    # Style it
-    # TODO:
 
     # All done
     return result
