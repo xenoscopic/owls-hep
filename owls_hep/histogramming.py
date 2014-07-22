@@ -164,7 +164,7 @@ def histogram(process, region, expressions, binnings):
 
     # Create the NumPy histogram
     numpy_result = data_histogram(
-        load(process, region_properties),
+        load(process, required_properties),
         region_weighted_selection,
         expressions,
         binnings

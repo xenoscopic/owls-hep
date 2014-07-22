@@ -5,6 +5,9 @@
 # System imports
 import warnings
 
+# Six imports
+from six import string_types
+
 # Pandas imports
 from pandas import DataFrame
 
