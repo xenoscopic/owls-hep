@@ -108,7 +108,7 @@ def _dummy_histogram(process, region, expressions, binnings):
     name_title = uuid4().hex
 
     # Create a bogus histogram
-    return TH1F(name_title, name_title, 100, 0, 100)
+    return TH1F(name_title, name_title, 1, 0, 1)
 
 
 @parallelized(_dummy_histogram, lambda p, r, e, b: p)

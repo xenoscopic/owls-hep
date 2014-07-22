@@ -19,6 +19,7 @@ writing them in square brackets.
 
 # System imports
 from copy import deepcopy
+import re
 
 # owls-config imports
 from owls_config import load as load_config
@@ -27,7 +28,8 @@ from owls_config import load as load_config
 from owls_data.expression import multiplied, anded
 
 
-# Global variable to store process configuration
+# Global variables to store region configuration
+_definitions = {}
 _configuration = {}
 
 
@@ -37,11 +39,20 @@ def load_regions(configuration_path):
     Args:
         configuration_path: The path to the YAML configuration file
     """
-    # Switch to the global variable
+    # Switch to the global variables
+    global _definitions
     global _configuration
 
     # Load the configuration
     _configuration = load_config(configuration_path)
+
+    # Make sure it isn't empty
+    if _configuration is None:
+        raise RuntimeError('region configuration empty')
+
+    # Extract definitions, if any
+    if 'definitions' in _configuration:
+        _definitions = _configuration.pop('definitions')
 
 
 def region(name):
@@ -53,14 +64,11 @@ def region(name):
     Returns:
         A region configuration dictionary.
     """
-    # Grab definitions
-    definitions = _configuration.get('definitions', {})
-
     # Create a regex to match definition specifications
     finder = re.compile('\[(.*?)\]')
 
     # Create a function which can be used to translate regex matches
-    translator = lambda match: '({0})'.format(definitions[match.group(1)])
+    translator = lambda match: '({0})'.format(_definitions[match.group(1)])
 
     # Grab the configuration
     region = _configuration[name]

@@ -4,10 +4,10 @@ Processes are encoded as Python dictionaries with the following entries:
 
 - 'label': The TLatex label to use for the process
 - 'line_color': The line color to use for the process in plots, as a
-  hexidecimal code of the form '#xxxxxx'
+  hexidecimal string of the form '#xxxxxx' or as a numeric ROOT color code
 - 'fill_color': The fill color to use for the process in plots, as a
-  hexidecimal code of the form '#xxxxxx'
-- 'marker_style': The marker style to use, as a string, empty for no style
+  hexidecimal string of the form '#xxxxxx' or as a numeric ROOT color code
+- 'marker_style': The marker style to use, or empty for no style
 - 'files': The ROOT files from which to load data, encoded as a list of partial
   URLs relative to some base
 - 'patches': A tuple of functions to be applied to loaded data
@@ -42,6 +42,9 @@ The patches tuple will always default to empty.
 from copy import deepcopy
 from functools import wraps
 
+# Six imports
+from six import string_types
+
 # ROOT imports
 from ROOT import TColor
 
@@ -55,7 +58,8 @@ from owls_cache.transient import cached as transiently_cached
 from owls_data.loading import load as load_data
 
 
-# Global variable to store process configuration
+# Global variables to store process configuration
+_defaults = {}
 _configuration = {}
 
 
@@ -65,11 +69,19 @@ def load_processes(configuration_path):
     Args:
         configuration_path: The path to the YAML configuration file
     """
-    # Switch to the global variable
+    # Switch to the global variables
+    global _defaults
     global _configuration
 
     # Load the configuration
     _configuration = load_config(configuration_path)
+
+    # Make sure it isn't empty
+    if _configuration is None:
+        raise RuntimeError('process configuration empty')
+
+    # Extract defaults
+    _defaults = _configuration.pop('defaults')
 
 
 def process(name):
@@ -81,11 +93,8 @@ def process(name):
     Returns:
         A process configuration dictionary.
     """
-    # Grab defaults
-    defaults = _configuration['defaults']
-
     # Grab the file prefix
-    file_prefix = defaults['files_prefix']
+    files_prefix = _defaults['files_prefix']
 
     # Grab the configuration
     process = _configuration[name]
@@ -93,12 +102,13 @@ def process(name):
     # Create the result
     return {
         'label': process['label'],
-        'line_color': process.get('line_color', defaults['line_color']),
-        'fill_color': process.get('fill_color', defaults['fill_color']),
+        'line_color': process.get('line_color', _defaults['line_color']),
+        'fill_color': process.get('fill_color', _defaults['fill_color']),
+        'marker_style': process.get('marker_style', _defaults['marker_style']),
         'files': ['{0}{1}'.format(files_prefix, f) for f in process['files']],
         'patches': (),
         'patch_branches': set(),
-        'tree': process.get('tree', defaults['tree']),
+        'tree': process.get('tree', _defaults['tree']),
     }
 
 
@@ -191,10 +201,16 @@ def styled(f):
         fill_color = process['fill_color']
         marker_style = process['marker_style']
 
+        # Translate hex colors if necessary
+        if isinstance(line_color, string_types):
+            line_color = TColor.GetColor(line_color)
+        if isinstance(fill_color, string_types):
+            fill_color = TColor.GetColor(fill_color)
+
         # Apply style
-        result.SetLineColor(TColor.GetColor(line_color))
-        result.SetFillColor(TColor.GetColor(fill_color))
-        if marker_style != '':
+        result.SetLineColor(line_color)
+        result.SetFillColor(fill_color)
+        if marker_style is not None:
             result.SetMarkerStyle(marker_style)
             result.SetMarkerSize(1)
             result.SetMarkerColor(result.GetLineColor())
