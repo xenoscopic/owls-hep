@@ -9,6 +9,9 @@ language: python
 # stuck with the custom build from the root_numpy project.
 python:
   - "2.7"
+env:
+  - ROOT=5-32-04
+  - ROOT=5-34-08
 
 # Install testing dependencies and the module itself
 # NOTE: We use the ROOT build provided by root_numpy:
