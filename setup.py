@@ -22,6 +22,9 @@ setup(
 
     # Dependencies
     install_requires = [
+        'pandas >= 0.14.0',
+        'six >= 1.7.3',
+        'root_numpy >= 3.3.1',
         'owls-config >= 0.0.1',
         'owls-cache >= 0.0.1',
         'owls-data >= 0.0.1',

@@ -1,0 +1,36 @@
+# Set the project language
+language: python
+
+# Set up the build matrix
+# TODO: If ROOT and PyROOT eventually support later versions of Python, add them
+# into the build matrix here (3.2-3.4 would be ideal and bring parity with other
+# OWLS modules).  We would need to add ROOT builds for these Python versions as
+# well, unless Travis upgrades servers to Ubuntu 14.04.  At the moment, we're
+# stuck with the custom build from the root_numpy project.
+python:
+  - "2.7"
+
+# Install testing dependencies and the module itself
+# NOTE: We use the ROOT build provided by root_numpy:
+# https://github.com/rootpy/root_numpy/blob/master/ci/install.sh
+install:
+  - wget --no-check-certificate https://copy.com/rtIyUdxgjt7h/ci/root_builds/root_v${ROOT}_python_${TRAVIS_PYTHON_VERSION}.tar.gz
+  - tar zxf root_v${ROOT}_python_${TRAVIS_PYTHON_VERSION}.tar.gz
+  - mv root_v${ROOT}_python_${TRAVIS_PYTHON_VERSION} root
+  - source root/bin/thisroot.sh
+  - pip install pep8
+  - pip install git+https://github.com/havoc-io/owls-config.git
+  - pip install git+https://github.com/havoc-io/owls-cache.git
+  - pip install git+https://github.com/havoc-io/owls-data.git
+  - pip install git+https://github.com/havoc-io/owls-parallel.git
+  - pip install -e .
+
+# Run PEP-8 compliance testing and unit tests
+script:
+  - common/scripts/run-pep8.sh
+  - common/scripts/run-tests.sh
+
+# Send notifications
+notifications:
+  email:
+    - jacob@havoc.io
