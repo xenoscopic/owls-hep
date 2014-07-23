@@ -36,7 +36,7 @@ def load(path):
 
     # Now try to load the local override
     local = load_config('{0}.local.yml'.format(splitext(path)[0]))
-    
+
     # Merge configuration, if any
     if local is not None:
         result.update(local)
