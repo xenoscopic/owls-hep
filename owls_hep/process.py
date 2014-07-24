@@ -1,55 +1,45 @@
 """Provides routines for loading process configuration and data.
 
-Processes are encoded as Python dictionaries with the following entries:
+Processes are encoded as dictionary-like objects with the following entries:
 
+- 'name': The name of the process
 - 'label': The TLatex label to use for the process
-- 'line_color': The line color to use for the process in plots, as a
-  hexidecimal string of the form '#xxxxxx' or as a numeric ROOT color code
-- 'fill_color': The fill color to use for the process in plots, as a
-  hexidecimal string of the form '#xxxxxx' or as a numeric ROOT color code
-- 'marker_style': The marker style to use, or empty for no style
 - 'files': The ROOT files from which to load data, encoded as a list of partial
   URLs relative to some base
 - 'patches': A tuple of functions to be applied to loaded data
 - 'patch_branches': A Python set which encodes additional branches necessary to
   apply a patch
 - 'tree': The name of the tree within the ROOT files to load
+- 'line_color': The line color to use for the process in plots, as a
+  hexidecimal string of the form '#xxxxxx' or as a numeric ROOT color code
+- 'fill_color': The fill color to use for the process in plots, as a
+  hexidecimal string of the form '#xxxxxx' or as a numeric ROOT color code
+- 'marker_style': The marker style to use, or None for no style
 
-This information is loaded from a YAML configuration file.  Within the file,
-there should only be mappings from process names to configurations.  The
-configuration for each process must include at least the 'label' and 'files'
-information provided.
+This information is loaded from a YAML configuration file, using the
+`load_processes` method.  Within the file, there should only be mappings from
+process names to configurations.  The configuration for each process must
+include at least the 'label' and 'files' information provided.  The 'name'
+parameter should not be included, as it will be determined from the
+configuration key itself.  The 'patches' and 'patch_branches' properties must
+also not be specified in configuration, but rather within Python code in the
+`process` method.  All other configuration parameters may be omitted, and will
+take on the following default values:
 
-Additionally, the configuration file should contain an entry named 'defaults',
-which should point to a mapping containing the following keys mapping to
-default values:
+- 'tree': 'tree'
+- 'line_color': 1
+- 'fill_color': 0
+- 'marker_style': None
 
-- 'line_color': The default line color
-- 'fill_color': The default fill color
-- 'marker_style': The default marker style
-- 'files_prefix': The base of all file URLs
-- 'tree': The default tree to use
+These defaults may be overridden from a configuration file by calling the
+`load_defaults` method.
 
-In the event that these keys are not provided for a process, these default
-values will be used.  The 'files_prefix' value will be prepended to all 'files'
-entries.
-
-The patches tuple will always default to empty.
+Finally, if the configuration file passed to `load_defaults` contains an entry
+named 'files_prefix', it will be pre-pended to all file paths specified in the
+process configurations.  The pre-pending does not include the addition of any
+'/' characters - it is simple concatenation.
 """
 
-
-# System imports
-from copy import deepcopy
-from functools import wraps
-
-# Six imports
-from six import string_types
-
-# ROOT imports
-from ROOT import TColor
-
-# owls-config imports
-from owls_config import load as load_config
 
 # owls-cache imports
 from owls_cache.transient import cached as transiently_cached
@@ -57,111 +47,97 @@ from owls_cache.transient import cached as transiently_cached
 # owls-data imports
 from owls_data.loading import load as load_data
 
-
-# Global variables to store process configuration
-_defaults = {}
-_configuration = {}
+# owls-hep imports
+from owls_hep.config import load as load_config
 
 
-def load_processes(configuration_path):
-    """Loads process configuration from a YAML file.
+# Global variables to store process configuration and defaults
+_defaults = {
+    'files_prefix': '',
+    'tree': 'tree',
+    'line_color': 1,
+    'fill_color': 0,
+    'marker_style': None,
+}
+_configurations = {}
+
+
+def load_defaults(configuration_path):
+    """Loads process configuration defaults from a YAML file.
+
+    `.local.yml`-style configuration overrides are supported.
 
     Args:
         configuration_path: The path to the YAML configuration file
     """
-    # Switch to the global variables
-    global _defaults
-    global _configuration
-
     # Load the configuration
-    _configuration = load_config(configuration_path)
-
-    # Make sure it isn't empty
-    if _configuration is None:
-        raise RuntimeError('process configuration empty')
-
-    # Extract defaults
-    _defaults = _configuration.pop('defaults')
+    _defaults.update(load_config(configuration_path))
 
 
-def process(name):
+def load_processes(configuration_path):
+    """Loads process configurations from a YAML file.
+
+    `.local.yml`-style configuration overrides are supported.
+
+    Args:
+        configuration_path: The path to the YAML configuration file
+    """
+    _configurations.update(load_config(configuration_path))
+
+
+# Private class to implement friendly __repr__ for processes
+class _Process(dict):
+    def __repr__(self):
+        return '{0}<{1},{2}>'.format(self['name'],
+                                     self['tree'],
+                                     repr(self['patches']))
+
+
+def process(name, tree = None, patches = (), patch_properties = set()):
     """Loads a process configuration by name.
 
     Args:
         name: The name of the process configuration to load
+        tree: If not None, this will override any value in
+            configuration/defaults
+        patches: A tuple of callables, each of which must take and return a
+            Pandas DataFrame, which will be applied to the process upon loading
+        patch_branches: A Python set of properties of the data which need to be
+            loaded for the patches to be applied
 
     Returns:
-        A process configuration dictionary.
+        A process configuration object, which behaves like a dictionary.
     """
     # Grab the file prefix
     files_prefix = _defaults['files_prefix']
 
     # Grab the configuration
-    process = _configuration[name]
+    process = _configurations[name]
 
     # Create the result
-    return {
-        'label': process['label'],
-        'line_color': process.get('line_color', _defaults['line_color']),
-        'fill_color': process.get('fill_color', _defaults['fill_color']),
-        'marker_style': process.get('marker_style', _defaults['marker_style']),
-        'files': ['{0}{1}'.format(files_prefix, f) for f in process['files']],
-        'patches': (),
-        'patch_branches': set(),
-        'tree': process.get('tree', _defaults['tree']),
-    }
-
-
-def patch(process, patch, branches):
-    """Adds a patch to a process.
-
-    Args:
-        process: The process configuration dictionary
-        patch: A function which takes and returns a Pandas DataFrame
-        branches: Additional branches which must be loaded in order to apply
-            the patch, as a Python set
-
-    Returns:
-        A modified process configuration dictionary with the added patch.
-    """
-    # Create the result
-    result = deepcopy(process)
-
-    # Update the patch list and branches
-    result['patches'] = result['patches'] + (patch,)
-    result['patch_branches'] = result['patch_branches'].union(branches)
-
-    # All done
-    return result
-
-
-def tree(process, tree):
-    """Creates a variation of the process which loads a different tree.
-
-    Args:
-        process: The process configuration dictionary
-        tree: The new tree path
-
-    Returns:
-        A modified process configuration dictionary with the new tree value.
-    """
-    # Create the result
-    result = deepcopy(process)
-
-    # Update the tree
-    result['tree'] = tree
-
-    # All done
-    return result
+    return _Process((
+        ('name', name),
+        ('label', process['label']),
+        ('line_color', process.get('line_color', _defaults['line_color'])),
+        ('fill_color', process.get('fill_color', _defaults['fill_color'])),
+        ('marker_style', process.get('marker_style',
+                                     _defaults['marker_style'])),
+        ('files', ['{0}{1}'.format(files_prefix, f)
+                   for f
+                   in process['files']]),
+        ('patches', patches),
+        ('patch_branches', patch_properties),
+        ('tree', process.get('tree', _defaults['tree'])),
+    ))
 
 
 @transiently_cached
-def load(process, branches):
+def load_process_data(process, properties):
     """Loads the data associated with the process configuration.
 
     Args:
         process: The process configuration dictionary
-        branches: The tree branches to load, as a Python set
+        properties: The tree branches to load, as a Python set
 
     Returns:
         A Pandas DataFrame containing the process data.  The tree weight will
@@ -170,7 +146,7 @@ def load(process, branches):
     # Load the data
     result = load_data(
         process['files'],
-        branches.union(process['patch_branches']),
+        properties.union(process['patch_branches']),
         {
             'tree': process['tree'],
             'tree_weight_property': 'tree_weight'
@@ -183,40 +159,3 @@ def load(process, branches):
 
     # All done
     return result
-
-
-def styled(f):
-    """Decorator which provides styling capability for functions returning
-    THN objects.  The wrapper function should accept a process configuration
-    dictionary as its first argument.
-    """
-    # Create the wrapper function
-    @wraps(f)
-    def wrapper(process, *args, **kwargs):
-        # Compute the result
-        result = f(process, *args, **kwargs)
-
-        # Get style
-        line_color = process['line_color']
-        fill_color = process['fill_color']
-        marker_style = process['marker_style']
-
-        # Translate hex colors if necessary
-        if isinstance(line_color, string_types):
-            line_color = TColor.GetColor(line_color)
-        if isinstance(fill_color, string_types):
-            fill_color = TColor.GetColor(fill_color)
-
-        # Apply style
-        result.SetLineColor(line_color)
-        result.SetFillColor(fill_color)
-        if marker_style is not None:
-            result.SetMarkerStyle(marker_style)
-            result.SetMarkerSize(1)
-            result.SetMarkerColor(result.GetLineColor())
-
-        # All done
-        return result
-
-    # Return the wrapper function
-    return wrapper

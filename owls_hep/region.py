@@ -1,68 +1,96 @@
 """Provides routines for loading region selections and weights.
 
-Regions are encoded as Python dictionaries with the following entries:
+Regions are encoded as dictionary-like with the following entries:
 
+- 'name': The name of the region
 - 'label': The TLatex label to use for the region
 - 'weight': The weight expression to use for the region
 - 'selection': The selection expression to use for the region
+- 'variations': A tuple of functions which accept two arguments, a weight
+  expression and a selection expression, and return a 2-tuple of modified
+  weight and selection expressions
 
 This information is loaded from a YAML configuration file.  Within the file,
 there should only be mappings from region names to configurations.  The
-configuration for each region must include all fields.
+configuration for each region must include all fields, except 'name' which will
+be taken from the configuration key itself.  The 'variations' properties must
+also not be specified in configuration, but rather within Python code in the
+`region` method.
 
-Additionally, the region configuration may contain an entry named
-'definitions', which may contain names mapping to expressions.  These names may
-be used in the 'weight' and 'selection' expressions of region definitions by
-writing them in square brackets.
+Users may provide a set of definitions, via the `load_definitions` method,
+from a configuration file mapping definition names to expressions.  The
+expressions may be substituted into weight/selection expressions by enclosing
+their names into square brackets.  E.g.:
+
+    In definitions.yml:
+
+        base_selection: 'property1 && property2 > 5'
+
+    In regions.yml
+
+        my_region:
+            label: 'My Region'
+            selection: '[base_selection] && property3 == 7'
+            weight: 'weight_property'
 """
 
 
 # System imports
-from copy import deepcopy
 import re
 
-# owls-config imports
-from owls_config import load as load_config
-
 # owls-data imports
-from owls_data.expression import multiplied, anded
+from owls_data.expression import multiplied
+
+# owls-hep imports
+from owls_hep.config import load as load_config
 
 
-# Global variables to store region configuration
+# Global variables to store region configuration and definitions
 _definitions = {}
-_configuration = {}
+_configurations = {}
 
 
-def load_regions(configuration_path):
-    """Loads region configuration from a YAML file.
+def load_definitions(configuration_path):
+    """Loads region definitions from a YAML file.
+
+    `.local.yml`-style configuration overrides are supported.
 
     Args:
         configuration_path: The path to the YAML configuration file
     """
-    # Switch to the global variables
-    global _definitions
-    global _configuration
-
     # Load the configuration
-    _configuration = load_config(configuration_path)
-
-    # Make sure it isn't empty
-    if _configuration is None:
-        raise RuntimeError('region configuration empty')
-
-    # Extract definitions, if any
-    if 'definitions' in _configuration:
-        _definitions = _configuration.pop('definitions')
+    _definitions.update(load_config(configuration_path))
 
 
-def region(name):
+def load_regions(configuration_path):
+    """Loads region configurations from a YAML file.
+
+    `.local.yml`-style configuration overrides are supported.
+
+    Args:
+        configuration_path: The path to the YAML configuration file
+    """
+    _configurations.update(load_config(configuration_path))
+
+
+# Private class to implement friendly __repr__ for regions
+class _Region(dict):
+    def __repr__(self):
+        return '{0}<{1}>'.format(self['name'],
+                                 repr(self['variations']))
+
+
+def region(name, variations = ()):
     """Loads a region configuration by name.
 
     Args:
         name: The name of the region configuration to load
+        variations: A tuple of callables, which must accept two arguments each,
+            a weight and selection expression, and return a 2-tuple of modified
+            weight and selection expressions
 
     Returns:
-        A region configuration dictionary.
+        A region configuration object, which behaves like a dictionary.
     """
     # Create a regex to match definition specifications
     finder = re.compile('\[(.*?)\]')
@@ -71,60 +99,21 @@ def region(name):
     translator = lambda match: '({0})'.format(_definitions[match.group(1)])
 
     # Grab the configuration
-    region = _configuration[name]
+    region = _configurations[name]
 
     # Create the result
-    return {
-        'label': region['label'],
-        'weight': finder.sub(translator, region['weight']),
-        'selection': finder.sub(translator, region['selection']),
-    }
-
-
-def reweight(region, expression):
-    """Modifies a region configuration by multiplying the specified expression
-    into the region weight.
-
-    Args:
-        region: The region configuration dictionary
-        expression: The additional weighting expression
-
-    Returns:
-        A modified region configuration dictionary with the added weight.
-    """
-    # Create the result
-    result = deepcopy(region)
-
-    # Update the weight
-    result['weight'] = multiplied(result['weight'], expression)
-
-    # All done
-    return result
-
-
-def select(region, expression):
-    """Modifies a region configuration by adding the additional selection
-    requirement specified by the expression
-
-    Args:
-        region: The region configuration dictionary
-        expression: The additional selection expression
-
-    Returns:
-        A modified region configuration dictionary with the added selection.
-    """
-    # Create the result
-    result = deepcopy(region)
-
-    # Update the weight
-    result['selection'] = anded(result['selection'], expression)
-
-    # All done
-    return result
+    return _Region((
+        ('name', name),
+        ('label', region['label']),
+        ('weight', finder.sub(translator, region['weight'])),
+        ('selection', finder.sub(translator, region['selection'])),
+        ('variations', variations),
+    ))
 
 
 def weighted_selection(region):
-    """Creates a weighted selection from a region configuration.
+    """Creates a weighted selection from a region configuration, with all
+    variations applied to the base weight and selection expressions.
 
     Args:
         region: The region configuration dictionary
@@ -132,4 +121,13 @@ def weighted_selection(region):
     Returns:
         A string representing the weighted selection expression.
     """
-    return multiplied(region['weight'], region['selection'])
+    # Get the base weight and selection expressions
+    weight = region['weight']
+    selection = region['selection']
+
+    # Apply any variations
+    for variation in region['variations']:
+        weight, selection = variation(weight, selection)
+
+    # Compute the combined expression
+    return multiplied(weight, selection)

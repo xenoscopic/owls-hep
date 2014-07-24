@@ -1,7 +1,5 @@
 """Provides facilities for setting the OWLS execution environment, in
-particular the parallelization backend and the persistent cache.  The
-environment is loaded from a configuration file, allowing for the
-locally-overridable behavior of owls_hep.config.load.
+particular the parallelization backend and the persistent cache.
 """
 
 
@@ -39,7 +37,7 @@ else:
                        'Python')
 
 
-def load(path = None):
+def load_environment(path = None):
     """Loads and configures the OWLS execution environment from a configuration
     script.
 
@@ -63,9 +61,9 @@ def load(path = None):
         path: The path to the environment configuration file, or None for the
             default environment
     """
-    # Create defaults
-    persistent_cache = FileSystemPersistentCache()
-    parallelization_backend = MultiprocessingParallelizationBackend()
+    # Create container to store environment so that we needn't immediately
+    # instantiate defaults (which will consume system resources)
+    result = {}
 
     # Load the configuration (if any)
     if path is not None:
@@ -78,22 +76,32 @@ def load(path = None):
 
         # Extract components
         if hasattr(module, 'persistent_cache'):
-            persistent_cache = module.persistent_cache
+            result['persistent_cache'] = module.persistent_cache
         if hasattr(module, 'parallelization_backend'):
-            parallelization_backend = module.parallelization_backend
+            result['parallelization_backend'] = module.parallelization_backend
 
         # Check for local overrides
         local_path = '{0}.local.py'.format(splitext(path)[0])
+        print(local_path)
         if exists(local_path) and isfile(local_path):
             # Load the module
             local_module = _load_module(local_path)
 
             # Extract components
             if hasattr(local_module, 'persistent_cache'):
-                persistent_cache = local_module.persistent_cache
+                result['persistent_cache'] = local_module.persistent_cache
             if hasattr(local_module, 'parallelization_backend'):
-                parallelization_backend = local_module.parallelization_backend
+                result['parallelization_backend'] = \
+                    local_module.parallelization_backend
 
-    # Set parameters
-    set_persistent_cache(persistent_cache)
-    set_parallelization_backend(parallelization_backend)
+    # Set persistent cache
+    if 'persistent_cache' in result:
+        set_persistent_cache(result['persistent_cache'])
+    else:
+        set_persistent_cache(FileSystemPersistentCache())
+
+    # Set parallelization backend
+    if 'parallelization_backend' in result:
+        set_parallelization_backend(result['parallelization_backend'])
+    else:
+        set_parallelization_backend(MultiprocessingParallelizationBackend())

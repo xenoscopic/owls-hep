@@ -5,12 +5,13 @@ region.
 
 # System imports
 from uuid import uuid4
+from functools import wraps
 
 # Six imports
 from six import string_types
 
 # ROOT imports
-from ROOT import TH1F, TH2F, TH3F
+from ROOT import TH1F, TH2F, TH3F, TColor
 
 # owls-cache imports
 from owls_cache.persistent import cached as persistently_cached
@@ -23,7 +24,7 @@ from owls_data.histogramming import histogram as data_histogram
 from owls_parallel import parallelized
 
 # owls-hep imports
-from owls_hep.process import load, styled
+from owls_hep.process import load_process_data
 from owls_hep.region import weighted_selection
 
 
@@ -102,6 +103,43 @@ def _numpy_to_root_histogram(histogram, name = None, title = None):
     return result
 
 
+# Decorator which applies style for the histogram method - necessary because
+# pickling of ROOT THN objects in the cache doesn't preserve style
+def _styled(f):
+    # Create the wrapper function
+    @wraps(f)
+    def wrapper(process, *args, **kwargs):
+        # Compute the result
+        result = f(process, *args, **kwargs)
+
+        # Get style
+        title = process['label']
+        line_color = process['line_color']
+        fill_color = process['fill_color']
+        marker_style = process['marker_style']
+
+        # Translate hex colors if necessary
+        if isinstance(line_color, string_types):
+            line_color = TColor.GetColor(line_color)
+        if isinstance(fill_color, string_types):
+            fill_color = TColor.GetColor(fill_color)
+
+        # Apply style
+        result.SetTitle(title)
+        result.SetLineColor(line_color)
+        result.SetFillColor(fill_color)
+        if marker_style is not None:
+            result.SetMarkerStyle(marker_style)
+            result.SetMarkerSize(1)
+            result.SetMarkerColor(result.GetLineColor())
+
+        # All done
+        return result
+
+    # Return the wrapper function
+    return wrapper
+
+
 # Dummy function to return fake values when parallelizing
 def _dummy_histogram(process, region, expressions, binnings):
     # Create a unique id
@@ -112,7 +150,7 @@ def _dummy_histogram(process, region, expressions, binnings):
 
 
 @parallelized(_dummy_histogram, lambda p, r, e, b: p)
-@styled
+@_styled
 @persistently_cached
 def histogram(process, region, expressions, binnings):
     """Generates a ROOT histogram of the specified event properties in the
@@ -164,7 +202,7 @@ def histogram(process, region, expressions, binnings):
 
     # Create the NumPy histogram
     numpy_result = data_histogram(
-        load(process, required_properties),
+        load_process_data(process, required_properties),
         region_weighted_selection,
         expressions,
         binnings
