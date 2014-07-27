@@ -15,7 +15,7 @@ there should only be mappings from region names to configurations.  The
 configuration for each region must include all fields, except 'name' which will
 be taken from the configuration key itself.  The 'variations' properties must
 also not be specified in configuration, but rather within Python code in the
-`region` method.
+`varied` method.
 
 Users may provide a set of definitions, via the `load_definitions` method,
 from a configuration file mapping definition names to expressions.  The
@@ -74,23 +74,55 @@ def load_regions(configuration_path):
 
 
 # Private class to implement friendly __repr__ for regions
-class _Region(dict):
+class RegionSpecification(dict):
     def __repr__(self):
         return '{0}<{1}>'.format(self['name'],
                                  repr(self['variations']))
 
+    def __setitem__(self, key, value):
+        raise RuntimeError('region specifications are immutable')
 
-def region(name, variations = ()):
+    def pop(self, key):
+        raise RuntimeError('process specifications are immutable')
+
+    def popitem(self, item):
+        raise RuntimeError('process specifications are immutable')
+
+    def update(self, other):
+        raise RuntimeError('process specifications are immutable')
+
+    def clear(self):
+        raise RuntimeError('process specifications are immutable')
+
+    def varied(self, variation):
+        """Generates an identical region specification with the specified
+        variation added.
+
+        Args:
+            variation: A callable which transforms a 2-tuple of a weight and
+                selection expression
+
+        Returns:
+            A new RegionSpecification object.
+        """
+        # Compute the result information
+        properties = dict(self)
+
+        # Modify the patches
+        properties['variations'] += (variation,)
+
+        # All done
+        return RegionSpecification(properties)
+
+
+def region(name):
     """Loads a region configuration by name.
 
     Args:
         name: The name of the region configuration to load
-        variations: A tuple of callables, which must accept two arguments each,
-            a weight and selection expression, and return a 2-tuple of modified
-            weight and selection expressions
 
     Returns:
-        A region configuration object, which behaves like a dictionary.
+        A RegionSpecification object.
     """
     # Create a regex to match definition specifications
     finder = re.compile('\[(.*?)\]')
@@ -102,12 +134,12 @@ def region(name, variations = ()):
     region = _configurations[name]
 
     # Create the result
-    return _Region((
+    return RegionSpecification((
         ('name', name),
         ('label', region['label']),
         ('weight', finder.sub(translator, region['weight'])),
         ('selection', finder.sub(translator, region['selection'])),
-        ('variations', variations),
+        ('variations', ()),
     ))
 
 

@@ -7,8 +7,8 @@ Processes are encoded as dictionary-like objects with the following entries:
 - 'files': The ROOT files from which to load data, encoded as a list of partial
   URLs relative to some base
 - 'patches': A tuple of functions to be applied to loaded data
-- 'patch_branches': A Python set which encodes additional branches necessary to
-  apply a patch
+- 'patch_properties': A Python set which encodes additional branches necessary
+  to apply a patch
 - 'tree': The name of the tree within the ROOT files to load
 - 'line_color': The line color to use for the process in plots, as a
   hexidecimal string of the form '#xxxxxx' or as a numeric ROOT color code
@@ -21,10 +21,11 @@ This information is loaded from a YAML configuration file, using the
 process names to configurations.  The configuration for each process must
 include at least the 'label' and 'files' information provided.  The 'name'
 parameter should not be included, as it will be determined from the
-configuration key itself.  The 'patches' and 'patch_branches' properties must
+configuration key itself.  The 'patches' and 'patch_properties' properties must
 also not be specified in configuration, but rather within Python code in the
-`process` method.  All other configuration parameters may be omitted, and will
-take on the following default values:
+using the `patch`/`retree` method of ProcessSpecification objects.  All other
+configuration parameters may be omitted, and will take on the following default
+values:
 
 - 'tree': 'tree'
 - 'line_color': 1
@@ -85,28 +86,105 @@ def load_processes(configuration_path):
     _configurations.update(load_config(configuration_path))
 
 
-# Private class to implement friendly __repr__ for processes
-class _Process(dict):
+class ProcessSpecification(dict):
+    """Represents a process specification.
+    """
+
     def __repr__(self):
+        """Reimplementation of __repr__ which is human-friendly and better for
+        caching.
+        """
         return '{0}<{1},{2}>'.format(self['name'],
                                      self['tree'],
                                      repr(self['patches']))
 
+    def __setitem__(self, key, value):
+        raise RuntimeError('process specifications are immutable')
 
-def process(name, tree = None, patches = (), patch_properties = set()):
+    def pop(self, key):
+        raise RuntimeError('process specifications are immutable')
+
+    def popitem(self, item):
+        raise RuntimeError('process specifications are immutable')
+
+    def update(self, other):
+        raise RuntimeError('process specifications are immutable')
+
+    def clear(self):
+        raise RuntimeError('process specifications are immutable')
+
+    def relabeled(self, name):
+        """Generates an identical process specification with the label changed.
+
+        Args:
+            label: The new label
+
+        Returns:
+            A new ProcessSpecification object.
+        """
+        # Compute the result information
+        properties = dict(self)
+
+        # Modify the tree
+        properties['label'] = name
+
+        # All done
+        return ProcessSpecification(properties)
+
+    def retreed(self, tree):
+        """Generates an identical process specification with the target tree
+        changed.
+
+        Args:
+            tree: The new tree value
+
+        Returns:
+            A new ProcessSpecification object.
+        """
+        # Compute the result information
+        properties = dict(self)
+
+        # Modify the tree
+        properties['tree'] = tree
+
+        # All done
+        return ProcessSpecification(properties)
+
+    def patched(self, patch, patch_properties):
+        """Generates an identical process specification with the specified
+        patch and patch properties added.
+
+        Args:
+            patch: A callable which transforms a Pandas DataFrame
+            patch_properties: The properties which need to be loaded to apply
+                the patch
+
+        Returns:
+            A new ProcessSpecification object.
+        """
+        # Compute the result information
+        properties = dict(self)
+
+        # Modify the patches
+        properties['patches'] += (patch,)
+
+        # Modify the patch properties
+        properties['patch_properties'] = properties['patch_properties'].union(
+            patch_properties
+        )
+
+        # All done
+        return ProcessSpecification(properties)
+
+
+def process(name):
     """Loads a process configuration by name.
 
     Args:
         name: The name of the process configuration to load
-        tree: If not None, this will override any value in
-            configuration/defaults
-        patches: A tuple of callables, each of which must take and return a
-            Pandas DataFrame, which will be applied to the process upon loading
-        patch_branches: A Python set of properties of the data which need to be
-            loaded for the patches to be applied
 
     Returns:
-        A process configuration object, which behaves like a dictionary.
+        A ProcessSpecification object.
     """
     # Grab the file prefix
     files_prefix = _defaults['files_prefix']
@@ -115,7 +193,7 @@ def process(name, tree = None, patches = (), patch_properties = set()):
     process = _configurations[name]
 
     # Create the result
-    return _Process((
+    return ProcessSpecification((
         ('name', name),
         ('label', process['label']),
         ('line_color', process.get('line_color', _defaults['line_color'])),
@@ -125,8 +203,8 @@ def process(name, tree = None, patches = (), patch_properties = set()):
         ('files', ['{0}{1}'.format(files_prefix, f)
                    for f
                    in process['files']]),
-        ('patches', patches),
-        ('patch_branches', patch_properties),
+        ('patches', ()),
+        ('patch_properties', set()),
         ('tree', process.get('tree', _defaults['tree'])),
     ))
 
@@ -146,7 +224,7 @@ def load_process_data(process, properties):
     # Load the data
     result = load_data(
         process['files'],
-        properties.union(process['patch_branches']),
+        properties.union(process['patch_properties']),
         {
             'tree': process['tree'],
             'tree_weight_property': 'tree_weight'

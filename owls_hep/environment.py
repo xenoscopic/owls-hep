@@ -4,8 +4,6 @@ particular the parallelization backend and the persistent cache.
 
 
 # System imports
-from sys import version_info
-from uuid import uuid4
 from os.path import exists, isfile, splitext
 
 # owls-cache imports
@@ -17,24 +15,8 @@ from owls_parallel import set_parallelization_backend
 from owls_parallel.backends.multiprocessing import \
     MultiprocessingParallelizationBackend
 
-
-# Define a method which can load modules by path
-_major_version = version_info[0]
-_module_id = lambda: 'm{0}'.format(uuid4().hex)
-if _major_version == 2:
-    import imp
-
-    def _load_module(path):
-        return imp.load_source(_module_id(), path)
-elif _major_version == 3:
-    import importlib.machinery
-
-    def _load_module(path):
-        loader = importlib.machinery.SourceFileLoader(_module_id(), path)
-        return loader.load_module()
-else:
-    raise RuntimeError('unable to manually load modules for this version of '
-                       'Python')
+# owls-hep imports
+from owls_hep.config import load_module
 
 
 def load_environment(path = None):
@@ -72,7 +54,7 @@ def load_environment(path = None):
             raise OSError('invalid environment configuration path')
 
         # Load it
-        module = _load_module(path)
+        module = load_module(path)
 
         # Extract components
         if hasattr(module, 'persistent_cache'):
@@ -82,10 +64,9 @@ def load_environment(path = None):
 
         # Check for local overrides
         local_path = '{0}.local.py'.format(splitext(path)[0])
-        print(local_path)
         if exists(local_path) and isfile(local_path):
             # Load the module
-            local_module = _load_module(local_path)
+            local_module = load_module(local_path)
 
             # Extract components
             if hasattr(local_module, 'persistent_cache'):

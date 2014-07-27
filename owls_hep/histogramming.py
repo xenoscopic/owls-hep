@@ -161,28 +161,8 @@ def histogram(process, region, expressions, binnings):
     Args:
         process: The process whose events should be histogrammed
         region: The region whose weighting/selection should be applied
-        expressions: The expressions, in terms of the dataset variables, to
-            histogram.  The length of this list determines the dimensionality
-            of the histogram.  Each expression must be a string to evaluate
-            using owls.data.evaluate.  A single expression string may be passed
-            in for a 1-D histogram.
-        binnings: An interable object of len(variables) representing binnings.
-            Each element of bins must have one of two forms:
-
-            A tuple of the form
-
-                (low_bin_left_edge, high_bin_right_edge, n_bins)
-
-            or a list of the form:
-
-                [low_bin_left_edge,
-                 second_bin_left_edge,
-                 ...,
-                 high_bin_right_edge]
-
-            If passing in a single expression string (not an iterable of
-            expression strings) for expressions, then binnings must be a single
-            object of one of these two types.
+        expressions: See owls.data.histogramming.histogram
+        binnings: See owls.data.histogramming.histogram
 
     Returns:
         A ROOT histogram.
