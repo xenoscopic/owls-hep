@@ -5,7 +5,6 @@ region.
 
 # System imports
 from uuid import uuid4
-from functools import wraps
 
 # Six imports
 from six import string_types
@@ -18,14 +17,13 @@ from owls_cache.persistent import cached as persistently_cached
 
 # owls-data imports
 from owls_data.expression import properties
-from owls_data.histogramming import histogram as data_histogram
+from owls_data.histogramming import histogram as _histogram
 
 # owls-parallel imports
 from owls_parallel import parallelized
 
 # owls-hep imports
-from owls_hep.process import load_process_data
-from owls_hep.region import weighted_selection
+from owls_hep.process import styled
 
 
 def _numpy_to_root_histogram(histogram, name = None, title = None):
@@ -103,43 +101,6 @@ def _numpy_to_root_histogram(histogram, name = None, title = None):
     return result
 
 
-# Decorator which applies style for the histogram method - necessary because
-# pickling of ROOT THN objects in the cache doesn't preserve style
-def _styled(f):
-    # Create the wrapper function
-    @wraps(f)
-    def wrapper(process, *args, **kwargs):
-        # Compute the result
-        result = f(process, *args, **kwargs)
-
-        # Get style
-        title = process['label']
-        line_color = process['line_color']
-        fill_color = process['fill_color']
-        marker_style = process['marker_style']
-
-        # Translate hex colors if necessary
-        if isinstance(line_color, string_types):
-            line_color = TColor.GetColor(line_color)
-        if isinstance(fill_color, string_types):
-            fill_color = TColor.GetColor(fill_color)
-
-        # Apply style
-        result.SetTitle(title)
-        result.SetLineColor(line_color)
-        result.SetFillColor(fill_color)
-        if marker_style is not None:
-            result.SetMarkerStyle(marker_style)
-            result.SetMarkerSize(1)
-            result.SetMarkerColor(result.GetLineColor())
-
-        # All done
-        return result
-
-    # Return the wrapper function
-    return wrapper
-
-
 # Dummy function to return fake values when parallelizing
 def _dummy_histogram(process, region, expressions, binnings):
     # Create a unique id
@@ -150,7 +111,7 @@ def _dummy_histogram(process, region, expressions, binnings):
 
 
 @parallelized(_dummy_histogram, lambda p, r, e, b: p)
-@_styled
+@styled
 @persistently_cached
 def histogram(process, region, expressions, binnings):
     """Generates a ROOT histogram of the specified event properties in the
@@ -168,28 +129,21 @@ def histogram(process, region, expressions, binnings):
         A ROOT histogram.
     """
     # Compute weighted selection
-    region_weighted_selection = weighted_selection(region)
+    weighted_selection = region()
 
     # Compute the weighted selection properties
-    required_properties = properties(region_weighted_selection)
+    required_properties = properties(weighted_selection)
 
     # Add in properties for expressions
     if isinstance(expressions, string_types):
         required_properties.update(properties(expressions))
     else:
-        for expression in expressions:
-            required_properties.update(properties(expression))
+        required_properties.update(*(properties(e) for e in expressions))
 
     # Create the NumPy histogram
-    numpy_result = data_histogram(
-        load_process_data(process, required_properties),
-        region_weighted_selection,
+    return _numpy_to_root_histogram(_histogram(
+        process(required_properties),
+        weighted_selection,
         expressions,
         binnings
-    )
-
-    # Compute the result
-    result = _numpy_to_root_histogram(numpy_result)
-
-    # All done
-    return result
+    ))
