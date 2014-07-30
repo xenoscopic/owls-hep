@@ -52,6 +52,7 @@ class Process(object):
             ','.join((p.name() for p in self._patches))
         )
 
+    @transiently_cached
     def __call__(self, properties):
         # Load data
         result = load_data(

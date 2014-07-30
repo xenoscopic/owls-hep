@@ -29,7 +29,7 @@ def count(process, region):
     weighted_selection = region()
 
     # Compute the weighted selection properties
-    required_properties = properties(weighted_selection)
+    region_properties = properties(weighted_selection)
 
     # Compute the count
-    return _count(process(required_properties), weighted_selection)
+    return _count(process(region_properties), weighted_selection)

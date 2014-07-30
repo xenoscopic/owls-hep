@@ -17,9 +17,6 @@ from owls_parallel import set_parallelization_backend
 from owls_parallel.backends.multiprocessing import \
     MultiprocessingParallelizationBackend
 
-# owls-hep imports
-from owls_hep.config import load_module
-
 
 # Define a method which can load modules by path.  The exact method depends on
 # the Python version.
@@ -76,7 +73,7 @@ def load_environment(path = None):
             raise OSError('invalid environment configuration path')
 
         # Load it
-        module = load_module(path)
+        module = _load_module(path)
 
         # Extract components
         if hasattr(module, 'persistent_cache'):
@@ -88,7 +85,7 @@ def load_environment(path = None):
         local_path = '{0}.local.py'.format(splitext(path)[0])
         if exists(local_path) and isfile(local_path):
             # Load the module
-            local_module = load_module(local_path)
+            local_module = _load_module(local_path)
 
             # Extract components
             if hasattr(local_module, 'persistent_cache'):

@@ -9,6 +9,9 @@ from uuid import uuid4
 # Six imports
 from six import string_types
 
+# Pandas import
+from pandas import merge
+
 # ROOT imports
 from ROOT import TH1F, TH2F, TH3F, TColor
 
@@ -110,7 +113,7 @@ def _dummy_histogram(process, region, expressions, binnings):
     return TH1F(name_title, name_title, 1, 0, 1)
 
 
-@parallelized(_dummy_histogram, lambda p, r, e, b: p)
+@parallelized(_dummy_histogram, lambda p, r, e, b: (p, r))
 @styled
 @persistently_cached
 def histogram(process, region, expressions, binnings):
@@ -132,17 +135,30 @@ def histogram(process, region, expressions, binnings):
     weighted_selection = region()
 
     # Compute the weighted selection properties
-    required_properties = properties(weighted_selection)
+    region_properties = properties(weighted_selection)
 
     # Add in properties for expressions
+    expression_properties = set()
     if isinstance(expressions, string_types):
-        required_properties.update(properties(expressions))
+        expression_properties.update(properties(expressions))
     else:
-        required_properties.update(*(properties(e) for e in expressions))
+        expression_properties.update(*(properties(e) for e in expressions))
+
+    # Load data
+    region_data = process(region_properties)
+    expression_data = process(expression_properties, cache = None)
+
+    # Combine the dataframes
+    data = merge(region_data,
+                 expression_data,
+                 left_index = True,
+                 right_index = True,
+                 suffixes = ('', '_duplicate'),
+                 copy = False)
 
     # Create the NumPy histogram
     return _numpy_to_root_histogram(_histogram(
-        process(required_properties),
+        data,
         weighted_selection,
         expressions,
         binnings
