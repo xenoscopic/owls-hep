@@ -10,7 +10,7 @@ from copy import deepcopy
 from owls_data.expression import multiplied
 
 # owls-hep imports
-from owls_hep.config import load_config
+from owls_hep.config import load as load_config
 
 
 class Variation(object):
@@ -83,7 +83,7 @@ class RegionLoader(object):
         weight = configuration['weight']
         selection = configuration['selection']
         label = configuration['label']
-        
+
         # Translate definitions
         weight = self._finder.sub(self._translator, weight)
         selection = self._finder.sub(self._translator, selection)

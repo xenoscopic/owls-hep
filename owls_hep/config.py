@@ -10,7 +10,7 @@ from os.path import splitext
 from owls_config import load as _load_config
 
 
-def load_config(path):
+def load(path):
     """Provides an identical interface to the owls_config.load method, except
     that if file with the same path but extension `.local.yml` instead of
     `.yml` exists, it will be loaded after the `.yml` file, and its contents

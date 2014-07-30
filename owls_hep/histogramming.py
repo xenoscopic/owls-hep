@@ -113,9 +113,19 @@ def _dummy_histogram(process, region, expressions, binnings):
     return TH1F(name_title, name_title, 1, 0, 1)
 
 
-@parallelized(_dummy_histogram, lambda p, r, e, b: (p, r))
+# Histogram parallelization mapper
+def _parallel_mapper(process, region, expressions, binnings):
+    return (process, region)
+
+
+# Histogram persistent cache mapper
+def _cache_mapper(process, region, expressions, binnings):
+    return (process, region, expressions, binnings)
+
+
+@parallelized(_dummy_histogram, _parallel_mapper)
 @styled
-@persistently_cached
+@persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
 def histogram(process, region, expressions, binnings):
     """Generates a ROOT histogram of the specified event properties in the
     given region.
@@ -146,7 +156,7 @@ def histogram(process, region, expressions, binnings):
 
     # Load data
     region_data = process(region_properties)
-    expression_data = process(expression_properties, cache = None)
+    expression_data = process(expression_properties)
 
     # Combine the dataframes
     data = merge(region_data,

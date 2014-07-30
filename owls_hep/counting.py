@@ -13,8 +13,8 @@ from owls_data.counting import count as _count
 from owls_parallel import parallelized
 
 
-@parallelized(lambda p, r: 1.0, lambda p, r: p)
-@persistently_cached
+@parallelized(lambda p, r: 1.0, lambda p, r: (p, r))
+@persistently_cached('owls_hep.counting.count', lambda p, r: (p, r))
 def count(process, region):
     """Computes the weighted event count of a process in a region.
 

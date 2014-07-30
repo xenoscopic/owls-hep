@@ -9,14 +9,11 @@ from copy import deepcopy
 # Six imports
 from six import string_types
 
-# owls-cache imports
-from owls_cache.transient import cached as transiently_cached
-
 # owls-data imports
 from owls_data.loading import load as load_data
 
 # owls-hep imports
-from owls_hep.config import load_config
+from owls_hep.config import load as load_config
 
 
 class Patch(object):
@@ -52,16 +49,19 @@ class Process(object):
             ','.join((p.name() for p in self._patches))
         )
 
-    @transiently_cached
     def __call__(self, properties):
-        # Load data
+        # Load data, specifying our own representation as the cache name,
+        # because if we apply patches, the resultant DataFrame will be mutated
+        # but still transiently cached, and the load method won't know anything
+        # about it
         result = load_data(
             self._files,
             properties.union(*(p.properties() for p in self._patches)),
             {
                 'tree': self._tree,
                 'tree_weight_property': 'tree_weight'
-            }
+            },
+            cache = repr(self)
         )
 
         # Apply patches
