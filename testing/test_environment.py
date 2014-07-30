@@ -11,7 +11,7 @@ from owls_parallel import get_parallelization_backend
 from owls_parallel.backends.batch import BatchParallelizationBackend
 
 # owls-hep imports
-from owls_hep.environment import load_environment
+from owls_hep.environment import load
 
 
 # Compute the path to the test configuration file
@@ -21,7 +21,7 @@ config_path = join(dirname(__file__), 'environment.py')
 class TestLoading(unittest.TestCase):
     def test(self):
         # Load the environment
-        load_environment(config_path)
+        load(config_path)
 
         # Make sure it is correct
         self.assertIsInstance(get_persistent_cache(), RedisPersistentCache)
