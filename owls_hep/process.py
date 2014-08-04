@@ -92,49 +92,43 @@ class Process(object):
         return result
 
 
-class ProcessLoader(object):
-    def __init__(self, processes_path, defaults_path):
-        # Set initial defaults and include any user overrides
-        self._defaults = {
-            'file_prefix': '',
-            'tree': 'tree',
-            'label': 'Process',
-            'line_color': 1,
-            'fill_color': 0,
-            'marker_style': None,
-        }
-        self._defaults.update(load_config(defaults_path))
+def load(processes_path, defaults_path):
+    # Load the configurations
+    processes = load_config(processes_path)
+    defaults = {
+        'file_prefix': '',
+        'tree': 'tree',
+        'label': 'Process',
+        'line_color': 1,
+        'fill_color': 0,
+        'marker_style': None,
+    }
+    defaults.update(load_config(defaults_path))
 
-        # Load configuration
-        self._processes = load_config(processes_path)
-
-    def __call__(self, name):
-        # Grab the process configuration
-        configuration = self._processes[name]
+    # Create the function to load individual processes
+    def process_loader(name):
+        # Grab the region configuration
+        configuration = processes[name]
 
         # Get the files
-        prefix = self._defaults['file_prefix']
-        files = [prefix + f
-                 for f
-                 in configuration['files']]
+        prefix = defaults['file_prefix']
+        files = ['{0}{1}'.format(prefix, f) for f in configuration['files']]
 
         # Get the initial tree
-        tree = self._defaults['tree']
+        tree = defaults['tree']
 
         # Get style parameters
-        label = configuration.get('label', self._defaults['label'])
-        line_color = configuration.get('line_color',
-                                       self._defaults['line_color'])
-        fill_color = configuration.get('fill_color',
-                                       self._defaults['fill_color'])
+        label = configuration.get('label', defaults['label'])
+        line_color = configuration.get('line_color', defaults['line_color'])
+        fill_color = configuration.get('fill_color', defaults['fill_color'])
         marker_style = configuration.get('marker_style',
-                                         self._defaults['marker_style'])
+                                         defaults['marker_style'])
 
         # Create the process
-        result = Process()
+        process = Process()
 
         # Set parameters
-        result._init(
+        process._init(
             name,
             files,
             tree,
@@ -145,7 +139,10 @@ class ProcessLoader(object):
         )
 
         # All done
-        return result
+        return process
+
+    # Return the loader
+    return process_loader
 
 
 def styled(f):

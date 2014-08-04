@@ -63,36 +63,37 @@ class Region(object):
         return result
 
 
-class RegionLoader(object):
-    def __init__(self, regions_path, definitions_path):
-        # Load configuration
-        self._regions = load_config(regions_path)
-        self._definitions = load_config(definitions_path)
+def load(regions_path, definitions_path):
+    # Load the configurations
+    regions = load_config(regions_path)
+    definitions = load_config(definitions_path)
 
-        # Create a definition translator
-        self._finder = re.compile('\[(.*?)\]')
-        self._translator = lambda match: '({0})'.format(
-            self._definitions[match.group(1)]
-        )
+    # Create a definition finder/translator
+    finder = re.compile('\[(.*?)\]')
+    translator = lambda match: '({0})'.format(definitions[match.group(1)])
 
-    def __call__(self, name):
-        # Grab the process configuration
-        configuration = self._regions[name]
+    # Create the function to load individual regions
+    def region_loader(name):
+        # Grab the region configuration
+        configuration = regions[name]
 
-        # Get parameters
+        # Extract parameters
         weight = configuration['weight']
         selection = configuration['selection']
         label = configuration['label']
 
         # Translate definitions
-        weight = self._finder.sub(self._translator, weight)
-        selection = self._finder.sub(self._translator, selection)
+        weight = finder.sub(translator, weight)
+        selection = finder.sub(translator, selection)
 
-        # Create the process
-        result = Region()
+        # Create the region
+        region = Region()
 
         # Set parameters
-        result._init(name, weight, selection, label)
+        region._init(name, weight, selection, label)
 
         # All done
-        return result
+        return region
+
+    # Return the loader
+    return region_loader
