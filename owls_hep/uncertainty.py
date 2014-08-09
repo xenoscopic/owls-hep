@@ -75,7 +75,7 @@ def _sum_quadrature(values):
     Returns:
         The sum of values in quadrature
     """
-    return sqrt(sum((x**2 for x in values)))
+    return sqrt(sum((x ** 2 for x in values)))
 
 
 def count_uncertainty(process, region, count, estimation, uncertainty):
