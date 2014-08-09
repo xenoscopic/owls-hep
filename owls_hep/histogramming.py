@@ -118,15 +118,47 @@ def _parallel_mapper(process, region, expressions, binnings):
     return (process, region)
 
 
+# Histogram argument extractor for calling by args/kwargs and extracting region
+# and expressions
+def _parallel_extractor(process, region, expressions, binnings):
+    return (region, expressions)
+
+
+# Histogram parallelization batcher
+def _parallel_batcher(function, args_kwargs):
+    # Create a combined set of properties necessary for all calls
+    all_properties = set()
+
+    # Go through all args/kwargs pairs
+    for args, kwargs in args_kwargs:
+        # Extract region and expressions
+        region, expressions = _parallel_extractor(*args, **kwargs)
+
+        # Add region properties
+        all_properties.update(properties(region()))
+
+        # Add expression properties
+        if isinstance(expressions, string_types):
+            all_properties.update(properties(expressions))
+        else:
+            all_properties.update(*(properties(e) for e in expressions))
+
+    # Go through all args/kwargs pairs and call the function
+    for args, kwargs in args_kwargs:
+        # Call the functions with load hints
+        kwargs['_load_hints'] = all_properties
+        function(*args, **kwargs)
+
+
 # Histogram persistent cache mapper
-def _cache_mapper(process, region, expressions, binnings):
+def _cache_mapper(process, region, expressions, binnings, _load_hints = None):
     return (process, region, expressions, binnings)
 
 
-@parallelized(_dummy_histogram, _parallel_mapper)
+@parallelized(_dummy_histogram, _parallel_mapper, _parallel_batcher)
 @styled
 @persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
-def histogram(process, region, expressions, binnings):
+def histogram(process, region, expressions, binnings, _load_hints = None):
     """Generates a ROOT histogram of the specified event properties in the
     given region.
 
@@ -137,6 +169,11 @@ def histogram(process, region, expressions, binnings):
         region: The region whose weighting/selection should be applied
         expressions: See owls.data.histogramming.histogram
         binnings: See owls.data.histogramming.histogram
+        _load_hints: A set of properties which the histogram will load in
+            addition to the minimum set required so that future calls will
+            hit transiently cached loads and evaluations (this is a private
+            argument for parallelization optimization and should not be
+            provided by users)
 
     Returns:
         A ROOT histogram.
@@ -144,27 +181,20 @@ def histogram(process, region, expressions, binnings):
     # Compute weighted selection
     weighted_selection = region()
 
-    # Compute the weighted selection properties
-    region_properties = properties(weighted_selection)
+    # Compute required data properties
+    required_properties = _load_hints if _load_hints is not None else set()
 
-    # Add in properties for expressions
-    expression_properties = set()
+    # Add in those properties necessary to evaluate the weighted selection
+    required_properties.update(properties(weighted_selection))
+
+    # Add in those properties necessary to evaluate expressions
     if isinstance(expressions, string_types):
-        expression_properties.update(properties(expressions))
+        required_properties.update(properties(expressions))
     else:
-        expression_properties.update(*(properties(e) for e in expressions))
+        required_properties.update(*(properties(e) for e in expressions))
 
     # Load data
-    region_data = process(region_properties)
-    expression_data = process(expression_properties)
-
-    # Combine the dataframes
-    data = merge(region_data,
-                 expression_data,
-                 left_index = True,
-                 right_index = True,
-                 suffixes = ('', '_duplicate'),
-                 copy = False)
+    data = process(required_properties)
 
     # Create the NumPy histogram
     return _numpy_to_root_histogram(_histogram(

@@ -70,6 +70,11 @@ class RootNumpyDataLoadingBackend(DataLoadingBackend):
         # loaded
         tree_weight_property = options.get('tree_weight_property', None)
 
+        # Remove tree_weight_property from required properties - it will be
+        # loaded implicitly
+        if tree_weight_property in properties:
+            properties.remove(tree_weight_property)
+
         # Load the data
         return DataFrame(root2array(
             filenames = url_or_urls,
