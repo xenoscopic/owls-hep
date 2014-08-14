@@ -115,7 +115,7 @@ def _dummy_histogram(process, region, expressions, binnings):
 
 # Histogram parallelization mapper
 def _parallel_mapper(process, region, expressions, binnings):
-    return (process, region)
+    return (process,)
 
 
 # Histogram argument extractor for calling by args/kwargs and extracting region
