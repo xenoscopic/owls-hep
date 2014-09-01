@@ -66,7 +66,7 @@ class Process(object):
 
         # Apply patches
         for p in self._patches:
-            result = p.apply(result)
+            result = p(result)
 
         # All done
         return result
@@ -182,6 +182,9 @@ def styled(f):
             result.SetMarkerStyle(marker_style)
             result.SetMarkerSize(1)
             result.SetMarkerColor(result.GetLineColor())
+
+        # Make lines visible
+        result.SetLineWidth(2)
 
         # All done
         return result
