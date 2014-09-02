@@ -22,12 +22,13 @@ class Variation(object):
 
 
 class Region(object):
-    def _init(self, name, weight, selection, label):
+    def _init(self, name, weight, selection, label, blinded):
         # Store parameters
         self._name = name
         self._weight = weight
         self._selection = selection
         self._label = label
+        self.blinded = blinded
 
         # Set default parameters
         self._variations = ()
@@ -81,6 +82,7 @@ def load(regions_path, definitions_path):
         weight = configuration['weight']
         selection = configuration['selection']
         label = configuration['label']
+        blinded = configuration.get('blinded', False)
 
         # Translate definitions
         weight = finder.sub(translator, weight)
@@ -90,7 +92,7 @@ def load(regions_path, definitions_path):
         region = Region()
 
         # Set parameters
-        region._init(name, weight, selection, label)
+        region._init(name, weight, selection, label, blinded)
 
         # All done
         return region
