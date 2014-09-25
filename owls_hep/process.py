@@ -42,6 +42,9 @@ class Process(object):
         # Set default parameters
         self._patches = ()
 
+    def name(self):
+        return self._name
+
     def __repr__(self):
         return '{0}[{1}]<{2}>'.format(
             self._name,
