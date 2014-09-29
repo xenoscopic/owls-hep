@@ -12,7 +12,6 @@ def owls_python_version_check():
     # Don't let OWLS modules install an unsupported python version
     supported_python_versions = (
         (2, 7),
-        (3, 2),
         (3, 3),
         (3, 4),
     )
