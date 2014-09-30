@@ -14,10 +14,21 @@ from owls_hep.config import load as load_config
 
 
 class Variation(object):
-    def name(self):
-        raise NotImplementedError('abstract method')
+    """Represents a variation which can be applied to a region.
+    """
 
     def __call__(self, weight, selection):
+        """Applies a variation to a region's weight and selection.
+
+        Implementers must override this method.
+
+        Args:
+            weight: The existing weight expression
+            selection: The existing selection expression
+
+        Returns:
+            A tuple of the form (varied_weight, varied_selection).
+        """
         raise NotImplementedError('abstract method')
 
 
