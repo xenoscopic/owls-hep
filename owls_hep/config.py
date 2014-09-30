@@ -7,7 +7,7 @@ facilitate shared configuration amongst multiple analysts.
 from os.path import splitext
 
 # owls-config imports
-from owls_config import load as _load_config
+from owls_config.yaml import load as _load_config
 
 
 def load(path):
