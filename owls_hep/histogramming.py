@@ -113,7 +113,8 @@ def _dummy_histogram(process, region, expressions, binnings):
     return TH1F(name_title, name_title, 1, 0, 1)
 
 
-# Histogram parallelization mapper
+# Histogram parallelization mapper.  We map/group based on process to maximize
+# data loading caching.
 def _parallel_mapper(process, region, expressions, binnings):
     return (process,)
 
@@ -135,7 +136,7 @@ def _parallel_batcher(function, args_kwargs):
         region, expressions = _parallel_extractor(*args, **kwargs)
 
         # Add region properties
-        all_properties.update(properties(region()))
+        all_properties.update(properties(region.weighted_selection()))
 
         # Add expression properties
         if isinstance(expressions, string_types):
@@ -179,7 +180,7 @@ def histogram(process, region, expressions, binnings, _load_hints = None):
         A ROOT histogram.
     """
     # Compute weighted selection
-    weighted_selection = region()
+    weighted_selection = region.weighted_selection()
 
     # Compute required data properties
     required_properties = _load_hints if _load_hints is not None else set()
@@ -194,7 +195,7 @@ def histogram(process, region, expressions, binnings, _load_hints = None):
         required_properties.update(*(properties(e) for e in expressions))
 
     # Load data
-    data = process(required_properties)
+    data = process.load(required_properties)
 
     # Create the NumPy histogram
     return _numpy_to_root_histogram(_histogram(

@@ -1,4 +1,4 @@
-"""Provides routines for loading region selections and weights.
+"""Provides models for regions and region variations.
 """
 
 

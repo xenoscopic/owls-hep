@@ -1,4 +1,4 @@
-"""Provides routines for loading process configuration and data.
+"""Provides models for processes and process patches.
 """
 
 
