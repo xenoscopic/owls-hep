@@ -3,155 +3,193 @@
 
 
 # System imports
-from functools import wraps
 from copy import deepcopy
+from functools import wraps
 
 # Six imports
 from six import string_types
 
+# owls-cache imports
+from owls_cache.transient import cached
+
 # owls-data imports
 from owls_data.loading import load as load_data
 
-# owls-hep imports
-from owls_hep.config import load as load_config
-
-
-class Patch(object):
-    def name(self):
-        raise NotImplementedError('abstract method')
-
-    def properties(self):
-        raise NotImplementedError('abstract method')
-
-    def __call__(self, data):
-        raise NotImplementedError('abstract method')
-
 
 class Process(object):
-    def _init(self, name, files, tree, label, line_color, fill_color,
-              marker_style):
+    """Represents a physical process whose events may be encoded in one or more
+    data files and which should be rendered according to a certain style.
+    """
+
+    def __init__(self,
+                 files,
+                 tree,
+                 label,
+                 line_color,
+                 fill_color,
+                 marker_style):
+        """Initializes a new instance of the Process class.
+
+        Args:
+            files: An iterable of ROOT file paths for files representing the
+                process
+            tree: The ROOT TTree path within the files to use
+            label: The ROOT TLatex label string to use when rendering the
+                process
+            line_color: The ROOT TColor number or hex string (#rrggbb) to use
+                as the line color when rendering the process
+            fill_color: The ROOT TColor number or hex string (#rrggbb) to use
+                as the fill color when rendering the process
+            marker_style: The ROOT TMarker number to use as the marker style
+                when rendering the process
+        """
         # Store parameters
-        self._name = name
-        self._files = files
+        self._files = tuple(files)
         self._tree = tree
         self._label = label
         self._line_color = line_color
         self._fill_color = fill_color
         self._marker_style = marker_style
 
-        # Set default parameters
-        self._patches = ()
+    def __eq__(self, other):
+        """Checks for equivalence between processes.
 
-    def name(self):
-        return self._name
+        Args:
+            other: The other object to test
 
-    def __repr__(self):
-        return '{0}[{1}]<{2}>'.format(
-            self._name,
-            self._tree,
-            ','.join((p.name() for p in self._patches))
-        )
+        Returns:
+            True if self and other are equivalent processes, False otherwise.
+        """
+        # Check types
+        if not isinstance(other, Process):
+            return False
 
-    def __call__(self, properties):
+        # Check only files and trees, since those are all that really matter
+        # for data loading
+        return self._files == other._files and self._tree == other._tree
+
+    def __hash__(self):
+        """Returns a hash for the process.
+        """
+        # Hash only files and trees, since those are all that really matter for
+        # data loading
+        return hash((self._files, self._tree))
+
+    def load(self, properties):
+        """Loads the given properties of the process data.
+
+        The tree weights of the TTrees are included in the resultant DataFrame
+        as the 'tree_weight' property.
+
+        Args:
+            properties: A Python set of property names (TTree branch names) to
+                load
+
+        Returns:
+            A Pandas DataFrame containing the specified properties for the
+            process.
+        """
         # Load data, specifying our own representation as the cache name,
         # because if we apply patches, the resultant DataFrame will be mutated
         # but still transiently cached, and the load method won't know anything
         # about it
-        result = load_data(
-            self._files,
-            properties.union(*(p.properties() for p in self._patches)),
-            {
-                'tree': self._tree,
-                'tree_weight_property': 'tree_weight'
-            },
-            cache = repr(self)
-        )
-
-        # Apply patches
-        for p in self._patches:
-            result = p(result)
-
-        # All done
-        return result
+        return load_data(self._files, properties, {
+            'tree': self._tree,
+            'tree_weight_property': 'tree_weight'
+        })
 
     def retreed(self, tree):
-        # Create a copy
+        """Creates a new copy of the process with a different tree.
+
+        Args:
+            tree: The tree to set for the new process
+
+        Returns:
+            A copy of the process with the tree modified.
+        """
+        # Create the copy
         result = deepcopy(self)
 
-        # Update the tree
+        # Retree
         result._tree = tree
 
         # All done
         return result
 
-    def patched(self, patch):
-        # Create a copy
-        result = deepcopy(self)
 
-        # Update patches
-        result._patches += (patch,)
+class PatchedProcess(Process):
+    """Represents a process which applies some patching function to its data.
+
+    This is an abstract class, and implementers are required to override the
+    `properties` and `patch` methods.
+    """
+
+    def __init__(self, process):
+        """Initializes a new instance of the PatchedProcess class.
+
+        Args:
+            process: The process to wrap
+        """
+        # Extract parameters from the underlying process
+        self._files = process._files
+        self._tree = process._tree
+        self._label = process._label
+        self._line_color = process._line_color
+        self._fill_color = process._fill_color
+        self._marker_style = process._marker_style
+
+    def properties(self):
+        """Returns a Python set of properties which need to be loaded from the
+        data in order to apply the patch.
+
+        Implementers must override this method.
+        """
+        raise NotImplementedError('abstract method')
+
+    def patch(self, data):
+        """Applies a patch to a DataFrame.
+
+        Implementers must override this method.  The DataFrame should be
+        mutated in-place.
+
+        Args:
+            data: The DataFrame to patch
+        """
+        raise NotImplementedError('abstract method')
+
+    @cached(lambda properties: (tuple(properties),))
+    def load(self, properties):
+        """Loads the given properties of the process data and applies a patch.
+
+        The tree weights of the TTrees are included in the resultant DataFrame
+        as the 'tree_weight' property.
+
+        Args:
+            properties: A Python set of property names (TTree branch names) to
+                load
+
+        Returns:
+            A patched Pandas DataFrame containing the specified properties for
+            the process.
+        """
+        # Compute the full required properties
+        all_properties = set.union(properties, self.properties())
+
+        # Call the underlying load method, making a copy of the result so-as
+        # not to mutate something which is cached
+        result = super(PatchedProcess, self).load(all_properties).copy()
+
+        # Apply the patch
+        self.patch(result)
 
         # All done
         return result
 
 
-def load(processes_path, defaults_path):
-    # Load the configurations
-    processes = load_config(processes_path)
-    defaults = {
-        'file_prefix': '',
-        'tree': 'tree',
-        'label': 'Process',
-        'line_color': 1,
-        'fill_color': 0,
-        'marker_style': None,
-    }
-    defaults.update(load_config(defaults_path))
-
-    # Create the function to load individual processes
-    def process_loader(name):
-        # Grab the region configuration
-        configuration = processes[name]
-
-        # Get the files
-        prefix = defaults['file_prefix']
-        files = ['{0}{1}'.format(prefix, f) for f in configuration['files']]
-
-        # Get the initial tree
-        tree = defaults['tree']
-
-        # Get style parameters
-        label = configuration.get('label', defaults['label'])
-        line_color = configuration.get('line_color', defaults['line_color'])
-        fill_color = configuration.get('fill_color', defaults['fill_color'])
-        marker_style = configuration.get('marker_style',
-                                         defaults['marker_style'])
-
-        # Create the process
-        process = Process()
-
-        # Set parameters
-        process._init(
-            name,
-            files,
-            tree,
-            label,
-            line_color,
-            fill_color,
-            marker_style
-        )
-
-        # All done
-        return process
-
-    # Return the loader
-    return process_loader
-
-
 def styled(f):
     """Decorator to apply process style to a histogram returned by a function.
 
-    The process name must be the first argument of the function.
+    The process must be the first argument of the function.
 
     Args:
         f: The function to wrap, which must return a ROOT THN object
