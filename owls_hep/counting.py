@@ -26,10 +26,10 @@ def count(process, region):
         The weighted event count in the region.
     """
     # Compute weighted selection
-    weighted_selection = region()
+    weighted_selection = region.weighted_selection()
 
     # Compute the weighted selection properties
     region_properties = properties(weighted_selection)
 
     # Compute the count
-    return _count(process(region_properties), weighted_selection)
+    return _count(process.load(region_properties), weighted_selection)
