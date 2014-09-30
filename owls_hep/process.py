@@ -29,11 +29,15 @@ class Patch(object):
         """Applies the patch to a DataFrame.
 
         The provided DataFrame will be a copy which can be freely mutated.
+        This method should return its input.
 
         Implementers must override this method.
 
         Args:
             data: The DataFrame to patch
+
+        Returns:
+            The modified DataFrame.
         """
         raise NotImplementedError('abstract method')
 
@@ -48,9 +52,9 @@ class Process(object):
                  files,
                  tree,
                  label,
-                 line_color,
-                 fill_color,
-                 marker_style):
+                 line_color = 1,
+                 fill_color = 0,
+                 marker_style = None):
         """Initializes a new instance of the Process class.
 
         Args:
