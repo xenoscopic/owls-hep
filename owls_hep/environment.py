@@ -7,15 +7,15 @@ parallelization backend and the persistent cache.
 from collections import defaultdict
 from os.path import exists, isfile, splitext
 
+# owls-config imports
+from owls_config.module import load as load_module
+
 # owls-cache imports
 from owls_cache.persistent.caches.fs import FileSystemPersistentCache
 
 # owls-parallel imports
 from owls_parallel.backends.multiprocessing import \
     MultiprocessingParallelizationBackend
-
-# owls-hep imports
-from owls_hep.module import load as load_module
 
 
 def load(path = None):
