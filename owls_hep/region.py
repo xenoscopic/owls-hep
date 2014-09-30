@@ -9,9 +9,6 @@ from copy import deepcopy
 # owls-data imports
 from owls_data.expression import multiplied
 
-# owls-hep imports
-from owls_hep.config import load as load_config
-
 
 class Variation(object):
     """Represents a variation which can be applied to a region.
