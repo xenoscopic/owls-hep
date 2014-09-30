@@ -9,11 +9,33 @@ from functools import wraps
 # Six imports
 from six import string_types
 
-# owls-cache imports
-from owls_cache.transient import cached
-
 # owls-data imports
 from owls_data.loading import load as load_data
+
+
+class Patch(object):
+    """Represents a patch to apply to a process' data.
+    """
+
+    def properties(self):
+        """Returns a Python set of properties of the data required to evaluate
+        the patch.
+
+        Implementers must override this method.
+        """
+        raise NotImplementedError('abstract method')
+
+    def __call__(self, data):
+        """Applies the patch to a DataFrame.
+
+        The provided DataFrame will be a copy which can be freely mutated.
+
+        Implementers must override this method.
+
+        Args:
+            data: The DataFrame to patch
+        """
+        raise NotImplementedError('abstract method')
 
 
 class Process(object):
@@ -22,6 +44,7 @@ class Process(object):
     """
 
     def __init__(self,
+                 name,
                  files,
                  tree,
                  label,
@@ -31,6 +54,7 @@ class Process(object):
         """Initializes a new instance of the Process class.
 
         Args:
+            name: A name by which to refer to the process
             files: An iterable of ROOT file paths for files representing the
                 process
             tree: The ROOT TTree path within the files to use
@@ -44,6 +68,7 @@ class Process(object):
                 when rendering the process
         """
         # Store parameters
+        self._name = name
         self._files = tuple(files)
         self._tree = tree
         self._label = label
@@ -51,29 +76,19 @@ class Process(object):
         self._fill_color = fill_color
         self._marker_style = marker_style
 
-    def __eq__(self, other):
-        """Checks for equivalence between processes.
-
-        Args:
-            other: The other object to test
-
-        Returns:
-            True if self and other are equivalent processes, False otherwise.
-        """
-        # Check types
-        if not isinstance(other, Process):
-            return False
-
-        # Check only files and trees, since those are all that really matter
-        # for data loading
-        return self._files == other._files and self._tree == other._tree
+        # Create initial patches container
+        self._patches = ()
 
     def __hash__(self):
         """Returns a hash for the process.
         """
-        # Hash only files and trees, since those are all that really matter for
-        # data loading
-        return hash((self._files, self._tree))
+        # Hash only files, tree, and patches since those are all that really
+        # matter for data loading
+        return hash((self._files, self._tree, self._patches))
+
+    @property
+    def name(self):
+        return self._name
 
     def load(self, properties):
         """Loads the given properties of the process data.
@@ -89,14 +104,24 @@ class Process(object):
             A Pandas DataFrame containing the specified properties for the
             process.
         """
-        # Load data, specifying our own representation as the cache name,
-        # because if we apply patches, the resultant DataFrame will be mutated
-        # but still transiently cached, and the load method won't know anything
-        # about it
-        return load_data(self._files, properties, {
+        # Compute the properties we need to load
+        all_properties = set.union(properties,
+                                   *(p.properties() for p in self._patches))
+
+        # Load data, specifying ourselves as the cache name, because if we
+        # apply patches, the resultant DataFrame will be mutated but still
+        # transiently cached, and the load method won't know anything about it
+        result = load_data(self._files, properties, {
             'tree': self._tree,
             'tree_weight_property': 'tree_weight'
-        })
+        }, cache = self)
+
+        # Apply patches
+        for p in self._patches:
+            result = p(result)
+
+        # All done
+        return result
 
     def retreed(self, tree):
         """Creates a new copy of the process with a different tree.
@@ -116,71 +141,20 @@ class Process(object):
         # All done
         return result
 
-
-class PatchedProcess(Process):
-    """Represents a process which applies some patching function to its data.
-
-    This is an abstract class, and implementers are required to override the
-    `properties` and `patch` methods.
-    """
-
-    def __init__(self, process):
-        """Initializes a new instance of the PatchedProcess class.
+    def patched(self, patch):
+        """Creates a new copy of the process with a patch applied.
 
         Args:
-            process: The process to wrap
-        """
-        # Extract parameters from the underlying process
-        self._files = process._files
-        self._tree = process._tree
-        self._label = process._label
-        self._line_color = process._line_color
-        self._fill_color = process._fill_color
-        self._marker_style = process._marker_style
-
-    def properties(self):
-        """Returns a Python set of properties which need to be loaded from the
-        data in order to apply the patch.
-
-        Implementers must override this method.
-        """
-        raise NotImplementedError('abstract method')
-
-    def patch(self, data):
-        """Applies a patch to a DataFrame.
-
-        Implementers must override this method.  The DataFrame should be
-        mutated in-place.
-
-        Args:
-            data: The DataFrame to patch
-        """
-        raise NotImplementedError('abstract method')
-
-    @cached(lambda properties: (tuple(properties),))
-    def load(self, properties):
-        """Loads the given properties of the process data and applies a patch.
-
-        The tree weights of the TTrees are included in the resultant DataFrame
-        as the 'tree_weight' property.
-
-        Args:
-            properties: A Python set of property names (TTree branch names) to
-                load
+            patch: The patch to apply in the new process
 
         Returns:
-            A patched Pandas DataFrame containing the specified properties for
-            the process.
+            A copy of the process with the additional patch applied.
         """
-        # Compute the full required properties
-        all_properties = set.union(properties, self.properties())
+        # Create the copy
+        result = deepcopy(self)
 
-        # Call the underlying load method, making a copy of the result so-as
-        # not to mutate something which is cached
-        result = super(PatchedProcess, self).load(all_properties).copy()
-
-        # Apply the patch
-        self.patch(result)
+        # Add the patch
+        result._patches += (patch,)
 
         # All done
         return result

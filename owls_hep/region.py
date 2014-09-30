@@ -22,27 +22,72 @@ class Variation(object):
 
 
 class Region(object):
-    def _init(self, name, weight, selection, label, blinded):
+    """Represents a region (a selection and weight) in which processes can be
+    evaluated.
+    """
+
+    def _init(self, name, weight, selection, label, blinded = False):
+        """Initialized a new instance of the Region class.
+
+        Args:
+            name: A name by which to refer to the region
+            weight: A string representing the weight for the region
+            selection: A string representing selection for the region
+            label: The ROOT TLatex label string to use when rendering the
+                region
+            blinded: Whether or not the region is marked as blinded
+        """
         # Store parameters
         self._name = name
         self._weight = weight
         self._selection = selection
         self._label = label
-        self.blinded = blinded
+        self._blinded = blinded
 
-        # Set default parameters
+        # Create initial variations container
         self._variations = ()
 
+    def __hash__(self):
+        """Returns a hash for the region.
+        """
+        # Hash only weight, selection, and variations since those are all that
+        # really matter for evaluation
+        return hash((self._weight, self._selection, self._variations))
+
+    @property
     def name(self):
+        """Returns the region name.
+        """
         return self._name
 
-    def __repr__(self):
-        return '{0}<{1}>'.format(
-            self._name,
-            ','.join((v.name() for v in self._variations))
-        )
+    @property
+    def blinded(self):
+        """Returns whether or not the region is blinded.
+        """
+        return self._blinded
 
-    def __call__(self):
+    def varied(self, variation):
+        """Creates a copy of the region with the specified variation applied.
+
+        Args:
+            variation: The variation to apply
+
+        Returns:
+            A duplicate region, but with the specified variation applied.
+        """
+        # Create the copy
+        result = deepcopy(self)
+
+        # Add the variation
+        result._variations += (variation,)
+
+        # All done
+        return result
+
+    def weighted_selection(self):
+        """Returns the weighted-selection expression for the region (after
+        applying all variations).
+        """
         # Grab resultant weight/selection
         weight, selection = self._weight, self._selection
 
@@ -52,50 +97,3 @@ class Region(object):
 
         # Compute the combined expression
         return multiplied(weight, selection)
-
-    def varied(self, variation):
-        # Create a copy
-        result = deepcopy(self)
-
-        # Update patches
-        result._variations += (variation,)
-
-        # All done
-        return result
-
-
-def load(regions_path, definitions_path):
-    # Load the configurations
-    regions = load_config(regions_path)
-    definitions = load_config(definitions_path)
-
-    # Create a definition finder/translator
-    finder = re.compile('\[(.*?)\]')
-    translator = lambda match: '({0})'.format(definitions[match.group(1)])
-
-    # Create the function to load individual regions
-    def region_loader(name):
-        # Grab the region configuration
-        configuration = regions[name]
-
-        # Extract parameters
-        weight = configuration['weight']
-        selection = configuration['selection']
-        label = configuration['label']
-        blinded = configuration.get('blinded', False)
-
-        # Translate definitions
-        weight = finder.sub(translator, weight)
-        selection = finder.sub(translator, selection)
-
-        # Create the region
-        region = Region()
-
-        # Set parameters
-        region._init(name, weight, selection, label, blinded)
-
-        # All done
-        return region
-
-    # Return the loader
-    return region_loader
