@@ -29,7 +29,47 @@ from owls_parallel import parallelized
 from owls_hep.process import styled
 
 
-def _numpy_to_root_histogram(histogram, name = None, title = None):
+class Distribution(object):
+    """Represents a histogrammable distribution.
+    """
+
+    def __init__(self,
+                 name,
+                 expressions,
+                 binnings,
+                 x_label = None,
+                 y_label = None):
+        """Initializes a new instance of the Distribution class.
+
+        Args:
+            name: A name by which to refer to the histogram
+            expressions: See owls.data.histogramming.histogram
+            binnings: See owls.data.histogramming.histogram
+            x_label: The ROOT TLatex label to use for the x-axis
+            y_label: The ROOT TLatex label to use for the y-axis
+        """
+        # Store parameters
+        self.name = name
+        self.expressions = expressions
+        self.binnings = binnings
+        self.x_label = x_label
+        self.y_label = y_label
+
+    def __hash__(self):
+        """Returns a hash of those quantities affecting the resultant
+        computation.
+        """
+        return hash((self.expressions,
+                     self.binnings,
+                     self.x_label,
+                     self.y_label))
+
+
+def _numpy_to_root_histogram(histogram,
+                             name = None,
+                             title = None,
+                             x_label = None,
+                             y_label = None):
     """Converts a NumPy histogram object into a ROOT histogram object.
 
     Args:
@@ -39,6 +79,10 @@ def _numpy_to_root_histogram(histogram, name = None, title = None):
             random and unique id will be used.
         title: The title to use for the ROOT histogram.  If None (the default)
             the name of the histogram will be used.
+        x_label: The TLatex x-axis label to use for the ROOT histogram.  If
+            None (the default), no x-axis label will be set.
+        y_label: The TLatex y-axis label to use for the ROOT histogram.  If
+            None (the default), no y-axis label will be set.
 
     Returns:
         An equivalent ROOT histogram, of the THND variety.
@@ -93,6 +137,12 @@ def _numpy_to_root_histogram(histogram, name = None, title = None):
                 for z in xrange(0, values.shape[2]):
                     result.SetBinContent(x, y, z, values[x][y][z])
 
+    # Set axis labels if necessary
+    if x_label is not None:
+        result.GetXaxis().SetTitle(x_label)
+    if y_label is not None:
+        result.GetYaxis().SetTitle(y_label)
+
     # Calculate errors.  In the event that Sumw2 is on automatically, the
     # errors will not be updated when we call SetBinContent, so we need to
     # clear them and update them.  Instead of using the False flag to Sumw2, we
@@ -105,7 +155,7 @@ def _numpy_to_root_histogram(histogram, name = None, title = None):
 
 
 # Dummy function to return fake values when parallelizing
-def _dummy_histogram(process, region, expressions, binnings):
+def _parallel_mocker(process, region, distribution):
     # Create a unique id
     name_title = uuid4().hex
 
@@ -115,14 +165,14 @@ def _dummy_histogram(process, region, expressions, binnings):
 
 # Histogram parallelization mapper.  We map/group based on process to maximize
 # data loading caching.
-def _parallel_mapper(process, region, expressions, binnings):
+def _parallel_mapper(process, region, distribution):
     return (process,)
 
 
 # Histogram argument extractor for calling by args/kwargs and extracting region
 # and expressions
-def _parallel_extractor(process, region, expressions, binnings):
-    return (region, expressions)
+def _parallel_extractor(process, region, distribution):
+    return (region, distribution)
 
 
 # Histogram parallelization batcher
@@ -133,16 +183,20 @@ def _parallel_batcher(function, args_kwargs):
     # Go through all args/kwargs pairs
     for args, kwargs in args_kwargs:
         # Extract region and expressions
-        region, expressions = _parallel_extractor(*args, **kwargs)
+        region, distribution = _parallel_extractor(*args, **kwargs)
 
         # Add region properties
         all_properties.update(properties(region.weighted_selection()))
 
         # Add expression properties
-        if isinstance(expressions, string_types):
-            all_properties.update(properties(expressions))
+        if isinstance(distribution.expressions, string_types):
+            all_properties.update(properties(distribution.expressions))
         else:
-            all_properties.update(*(properties(e) for e in expressions))
+            all_properties.update(*(
+                properties(e)
+                for e
+                in distribution.expressions
+            ))
 
     # Go through all args/kwargs pairs and call the function
     for args, kwargs in args_kwargs:
@@ -152,14 +206,14 @@ def _parallel_batcher(function, args_kwargs):
 
 
 # Histogram persistent cache mapper
-def _cache_mapper(process, region, expressions, binnings, _load_hints = None):
-    return (process, region, expressions, binnings)
+def _cache_mapper(process, region, distribution, _load_hints = None):
+    return (process, region, distribution)
 
 
-@parallelized(_dummy_histogram, _parallel_mapper, _parallel_batcher)
+@parallelized(_parallel_mocker, _parallel_mapper, _parallel_batcher)
 @styled
 @persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
-def histogram(process, region, expressions, binnings, _load_hints = None):
+def histogram(process, region, distribution, _load_hints = None):
     """Generates a ROOT histogram of the specified event properties in the
     given region.
 
@@ -168,8 +222,7 @@ def histogram(process, region, expressions, binnings, _load_hints = None):
     Args:
         process: The process whose events should be histogrammed
         region: The region whose weighting/selection should be applied
-        expressions: See owls.data.histogramming.histogram
-        binnings: See owls.data.histogramming.histogram
+        distribution: The distribution to histogram
         _load_hints: A set of properties which the histogram will load in
             addition to the minimum set required so that future calls will
             hit transiently cached loads and evaluations (this is a private
@@ -189,18 +242,26 @@ def histogram(process, region, expressions, binnings, _load_hints = None):
     required_properties.update(properties(weighted_selection))
 
     # Add in those properties necessary to evaluate expressions
-    if isinstance(expressions, string_types):
-        required_properties.update(properties(expressions))
+    if isinstance(distribution.expressions, string_types):
+        required_properties.update(properties(distribution.expressions))
     else:
-        required_properties.update(*(properties(e) for e in expressions))
+        required_properties.update(*(
+            properties(e)
+            for e
+            in distribution.expressions
+        ))
 
     # Load data
     data = process.load(required_properties)
 
-    # Create the NumPy histogram
-    return _numpy_to_root_histogram(_histogram(
-        data,
-        weighted_selection,
-        expressions,
-        binnings
-    ))
+    # Create the NumPy histogram and convert it to a ROOT histogram
+    return _numpy_to_root_histogram(
+        _histogram(
+            data,
+            weighted_selection,
+            distribution.expressions,
+            distribution.binnings
+        ),
+        x_label = distribution.x_label,
+        y_label = distribution.y_label
+    )

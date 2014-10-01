@@ -9,9 +9,8 @@ provides several functions for manipulating histograms or collections thereof:
     - ratio_histogram
     - histogram_stack
 
-In a notable break from OWLS' typically functional style of programming, it
-provides a class, 'Plot', which can be used to model a ROOT plot, enabling the
-following features:
+It also provides a class, 'Plot', which can be used to model a ROOT plot,
+enabling the following features:
 
     - Stacked background histograms
     - Data histograms
