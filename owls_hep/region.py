@@ -14,6 +14,18 @@ class Variation(object):
     """Represents a variation which can be applied to a region.
     """
 
+    def __hash__(self):
+        """Returns a unique hash for the variation.
+
+        The default implementation is based on type.  Implementers may wish to
+        override if the variation contains other state.
+        """
+        # Grab the patch type
+        variation_type = type(self)
+
+        # Create a unique hash
+        return hash((variation_type.__module__, variation_type.__name__))
+
     def __call__(self, weight, selection):
         """Applies a variation to a region's weight and selection.
 
@@ -34,7 +46,7 @@ class Region(object):
     evaluated.
     """
 
-    def _init(self, name, weight, selection, label, blinded = False):
+    def __init__(self, name, weight, selection, label, blinded = False):
         """Initialized a new instance of the Region class.
 
         Args:

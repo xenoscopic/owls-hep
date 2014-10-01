@@ -17,6 +17,18 @@ class Patch(object):
     """Represents a patch to apply to a process' data.
     """
 
+    def __hash__(self):
+        """Returns a unique hash for the patch.
+
+        The default implementation is based on type.  Implementers may wish to
+        override if the patch contains other state.
+        """
+        # Grab the patch type
+        patch_type = type(self)
+
+        # Create a unique hash
+        return hash((patch_type.__module__, patch_type.__name__))
+
     def properties(self):
         """Returns a Python set of properties of the data required to evaluate
         the patch.
@@ -115,7 +127,7 @@ class Process(object):
         # Load data, specifying ourselves as the cache name, because if we
         # apply patches, the resultant DataFrame will be mutated but still
         # transiently cached, and the load method won't know anything about it
-        result = load_data(self._files, properties, {
+        result = load_data(self._files, all_properties, {
             'tree': self._tree,
             'tree_weight_property': 'tree_weight'
         }, cache = self)

@@ -706,7 +706,7 @@ class Plot(object):
 
         Args:
             luminosity: The integrated luminosity, in pb^-1
-            sqrt_s: The center of mass energy, in TeV
+            sqrt_s: The center of mass energy, in MeV
             label: The label to put after 'ATLAS', None to exclude the 'ATLAS'
                 categorization entirely
         """
@@ -736,7 +736,7 @@ class Plot(object):
 
         # Draw the center of mass energy and the result of the KS-test, if
         # requested
-        text = '#sqrt{{s}} = {0} TeV'.format(sqrt_s)
+        text = '#sqrt{{s}} = {0:.1f} TeV'.format(sqrt_s / 1000000.0)
         if ks_test is not None:
             text += ', KS = {0:.2f}'.format(ks_test)
         stamp.DrawLatex(
