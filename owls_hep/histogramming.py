@@ -57,20 +57,46 @@ class Distribution(object):
             y_label: The ROOT TLatex label to use for the y-axis
         """
         # Store parameters
-        self.name = name
-        self.expressions = expressions
-        self.binnings = binnings
-        self.x_label = x_label
-        self.y_label = y_label
+        self._name = name
+        self._expressions = expressions
+        self._binnings = binnings
+        self._x_label = x_label
+        self._y_label = y_label
 
     def __hash__(self):
         """Returns a hash of those quantities affecting the resultant
         computation.
         """
-        return hash((self.expressions,
-                     self.binnings,
-                     self.x_label,
-                     self.y_label))
+        # TODO: Do we really need x-label/y-label here?
+        return hash((self._expressions,
+                     self._binnings,
+                     self._x_label,
+                     self._y_label))
+
+    def name(self):
+        """Returns the name for this distribution.
+        """
+        return self._name
+
+    def expressions(self):
+        """Returns the expressions for this distribution.
+        """
+        return self._expressions
+
+    def binnings(self):
+        """Returns the binnings for this distribution.
+        """
+        return self._binnings
+
+    def x_label(self):
+        """Returns the x-axis label for this distribution.
+        """
+        return self._x_label
+
+    def y_label(self):
+        """Returns the y-axis label for this distribution.
+        """
+        return self._y_label
 
 
 def _numpy_to_root_histogram(histogram):
@@ -147,17 +173,18 @@ def _parallel_mocker(process, region, distribution):
     })
 
     # Create bogus expressions
-    if isinstance(distribution.expressions, string_types):
+    expressions = distribution.expressions()
+    if isinstance(expressions, string_types):
         expressions = 'variable'
     else:
-        expressions = ['variable'] * len(distribution.expressions)
+        expressions = ['variable'] * len(expressions)
 
     # Create the NumPy histogram and convert it to a ROOT histogram
     return _raw_histogram(
         data,
         'variable',
         expressions,
-        distribution.binnings
+        distribution.binnings()
     )
 
 
@@ -187,14 +214,11 @@ def _parallel_batcher(function, args_kwargs):
         all_properties.update(properties(region.weighted_selection()))
 
         # Add expression properties
-        if isinstance(distribution.expressions, string_types):
-            all_properties.update(properties(distribution.expressions))
+        expressions = distribution.expressions()
+        if isinstance(expressions, string_types):
+            all_properties.update(properties(expressions))
         else:
-            all_properties.update(*(
-                properties(e)
-                for e
-                in distribution.expressions
-            ))
+            all_properties.update(*(properties(e) for e in expressions))
 
     # Go through all args/kwargs pairs and call the function
     for args, kwargs in args_kwargs:
@@ -231,6 +255,9 @@ def _histogram(process, region, distribution, _load_hints = None):
     # Compute weighted selection
     weighted_selection = region.weighted_selection()
 
+    # Compute expressions
+    expressions = distribution.expressions()
+
     # Compute required data properties
     required_properties = _load_hints if _load_hints is not None else set()
 
@@ -238,14 +265,10 @@ def _histogram(process, region, distribution, _load_hints = None):
     required_properties.update(properties(weighted_selection))
 
     # Add in those properties necessary to evaluate expressions
-    if isinstance(distribution.expressions, string_types):
-        required_properties.update(properties(distribution.expressions))
+    if isinstance(expressions, string_types):
+        required_properties.update(properties(expressions))
     else:
-        required_properties.update(*(
-            properties(e)
-            for e
-            in distribution.expressions
-        ))
+        required_properties.update(*(properties(e) for e in expressions))
 
     # Load data
     data = process.load(required_properties)
@@ -254,8 +277,8 @@ def _histogram(process, region, distribution, _load_hints = None):
     return _raw_histogram(
         data,
         weighted_selection,
-        distribution.expressions,
-        distribution.binnings
+        expressions,
+        distribution.binnings()
     )
 
 

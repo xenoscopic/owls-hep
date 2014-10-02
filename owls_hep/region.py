@@ -93,13 +93,11 @@ class Region(object):
         # really matter for evaluation
         return hash((self._weight, self._selection, self._variations))
 
-    @property
     def name(self):
         """Returns the region name.
         """
         return self._name
 
-    @property
     def blinded(self):
         """Returns whether or not the region is blinded.
         """

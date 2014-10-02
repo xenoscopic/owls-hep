@@ -133,7 +133,6 @@ class Process(object):
         # matter for data loading
         return hash((self._files, self._tree, self._patches))
 
-    @property
     def name(self):
         return self._name
 
