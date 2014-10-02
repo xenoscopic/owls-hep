@@ -20,14 +20,33 @@ class Patch(object):
     def __hash__(self):
         """Returns a unique hash for the patch.
 
-        The default implementation is based on type.  Implementers may wish to
-        override if the patch contains other state.
+        This method should not be overridden.
         """
         # Grab the patch type
         patch_type = type(self)
 
+        # Extract hashable components
+        module = patch_type.__module__
+        name = patch_type.__name__
+        state = self.state()
+
         # Create a unique hash
-        return hash((patch_type.__module__, patch_type.__name__))
+        return hash((module, name, state))
+
+    def state(self):
+        """Returns a representation of the patch's internal state, if any.
+
+        This method is used to generate a unique hash for the patch for the
+        purposes of caching.  If a patch has no internal state, and it's
+        behavior is determined entirely by its type, then the implementer need
+        not override this method.  However, if a patch contains state which
+        affects its patching behavior, this method needs to be overridden.  A
+        simple tuple may be returned containing the state of the patch.
+
+        Returns:
+            A hashable object representing the internal state of the patch.
+        """
+        return ()
 
     def properties(self):
         """Returns a Python set of properties of the data required to evaluate

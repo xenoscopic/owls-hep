@@ -15,16 +15,35 @@ class Variation(object):
     """
 
     def __hash__(self):
-        """Returns a unique hash for the variation.
+        """Returns a unique hash for the patch.
 
-        The default implementation is based on type.  Implementers may wish to
-        override if the variation contains other state.
+        This method should not be overridden.
         """
-        # Grab the patch type
+        # Grab the variation type
         variation_type = type(self)
 
+        # Extract hashable components
+        module = variation_type.__module__
+        name = variation_type.__name__
+        state = self.state()
+
         # Create a unique hash
-        return hash((variation_type.__module__, variation_type.__name__))
+        return hash((module, name, state))
+
+    def state(self):
+        """Returns a representation of the variation's internal state, if any.
+
+        This method is used to generate a unique hash for the variation for the
+        purposes of caching.  If a variation has no internal state, and it's
+        behavior is determined entirely by its type, then the implementer need
+        not override this method.  However, if a variation contains state which
+        affects its patching behavior, this method needs to be overridden.  A
+        simple tuple may be returned containing the state of the variation.
+
+        Returns:
+            A hashable object representing the internal state of the variation.
+        """
+        return ()
 
     def __call__(self, weight, selection):
         """Applies a variation to a region's weight and selection.
