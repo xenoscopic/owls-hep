@@ -4,13 +4,19 @@
 
 # System imports
 from copy import deepcopy
-from functools import wraps
 
 # Six imports
 from six import string_types
 
 # owls-data imports
 from owls_data.loading import load as load_data
+
+
+# Set up default exports
+__all__ = [
+    'Patch',
+    'Process',
+]
 
 
 class Patch(object):
@@ -111,6 +117,12 @@ class Process(object):
         self._fill_color = fill_color
         self._marker_style = marker_style
 
+        # Translate hex colors if necessary
+        if isinstance(self._line_color, string_types):
+            self._line_color = TColor.GetColor(self._line_color)
+        if isinstance(self._fill_color, string_types):
+            self._fill_color = TColor.GetColor(self._fill_color)
+
         # Create initial patches container
         self._patches = ()
 
@@ -194,55 +206,31 @@ class Process(object):
         # All done
         return result
 
+    def style(self, histogram):
+        """Applies the process' style to a histogram.
 
-def styled(f):
-    """Decorator to apply process style to a histogram returned by a function.
+        Args:
+            histogram: The histogram to style
+        """
+        # Set title
+        histogram.SetTitle(self._label)
 
-    The process must be the first argument of the function.
+        # Set line color
+        histogram.SetLineColor(self._line_color)
 
-    Args:
-        f: The function to wrap, which must return a ROOT THN object
+        # Set fill style and color
+        histogram.SetFillStyle(1001)
+        histogram.SetFillColor(self._fill_color)
 
-    Returns:
-        A function that returns styled THN objects.
-    """
-    # Create the wrapper function
-    @wraps(f)
-    def wrapper(process, *args, **kwargs):
-        # Compute the result
-        result = f(process, *args, **kwargs)
-
-        # Extract style
-        title = process._label
-        line_color = process._line_color
-        fill_color = process._fill_color
-        marker_style = process._marker_style
-
-        # Translate hex colors if necessary
-        if isinstance(line_color, string_types):
-            line_color = TColor.GetColor(line_color)
-        if isinstance(fill_color, string_types):
-            fill_color = TColor.GetColor(fill_color)
-
-        # Apply style
-        result.SetTitle(title)
-        result.SetLineColor(line_color)
-        result.SetFillStyle(1001)
-        result.SetFillColor(fill_color)
-        if marker_style is not None:
-            result.SetMarkerStyle(marker_style)
-            result.SetMarkerSize(1)
-            result.SetMarkerColor(result.GetLineColor())
+        # Set marker style
+        if self._marker_style is not None:
+            histogram.SetMarkerStyle(self._marker_style)
+            histogram.SetMarkerSize(1)
+            histogram.SetMarkerColor(histogram.GetLineColor())
         else:
             # HACK: Set marker style to an invalid value if not specified,
             # because we need some way to differentiate rendering in the legend
-            result.SetMarkerStyle(0)
+            histogram.SetMarkerStyle(0)
 
         # Make lines visible
-        result.SetLineWidth(2)
-
-        # All done
-        return result
-
-    # Return the wrapper function
-    return wrapper
+        histogram.SetLineWidth(2)

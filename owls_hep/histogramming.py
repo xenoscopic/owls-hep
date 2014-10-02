@@ -11,7 +11,7 @@ from functools import wraps
 from six import string_types
 
 # Pandas import
-from pandas import merge
+from pandas import DataFrame
 
 # rootpy imports
 from rootpy.plotting import Hist, Hist2D, Hist3D
@@ -27,8 +27,14 @@ from owls_data.histogramming import histogram as _raw_histogram
 from owls_parallel import parallelized
 
 # owls-hep imports
-from owls_hep.process import styled
 from owls_hep.calculation import Calculation
+
+
+# Set up default exports
+__all__ = [
+    'Distribution',
+    'Histogram',
+]
 
 
 class Distribution(object):
@@ -133,19 +139,26 @@ def _numpy_to_root_histogram(histogram):
     return result
 
 
-# Decorator to convert numpy histograms to ROOT histograms using
-# _numpy_to_root_histogram
-def _rootify(f):
-    # Create the wrapper function
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return _numpy_to_root_histogram(f(*args, **kwargs))
-    return wrapper
-
-
 # Dummy function to return fake values when parallelizing
 def _parallel_mocker(process, region, distribution):
-    return Hist(1, 0, 1)
+    # Create bogus data
+    data = DataFrame({
+        'variable': [],
+    })
+
+    # Create bogus expressions
+    if isinstance(distribution.expressions, string_types):
+        expressions = 'variable'
+    else:
+        expressions = ['variable'] * len(distribution.expressions)
+
+    # Create the NumPy histogram and convert it to a ROOT histogram
+    return _raw_histogram(
+        data,
+        'variable',
+        expressions,
+        distribution.binnings
+    )
 
 
 # Histogram parallelization mapper.  We map/group based on process to maximize
@@ -196,8 +209,6 @@ def _cache_mapper(process, region, distribution, _load_hints = None):
 
 
 @parallelized(_parallel_mocker, _parallel_mapper, _parallel_batcher)
-@styled
-@_rootify
 @persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
 def _histogram(process, region, distribution, _load_hints = None):
     """Generates a NumPy histogram of a distribution a process in a region.
@@ -273,4 +284,14 @@ class Histogram(Calculation):
         Returns:
             A rootpy histogram representing the resultant distribution.
         """
-        return _histogram(process, region, self._distribution)
+        # Compute the NumPy histogram
+        numpy_histogram = _histogram(process, region, self._distribution)
+
+        # Convert it to a ROOT histogram
+        root_histogram = _numpy_to_root_histogram(numpy_histogram)
+
+        # Style the histogram
+        process.style(root_histogram)
+
+        # All done
+        return root_histogram
