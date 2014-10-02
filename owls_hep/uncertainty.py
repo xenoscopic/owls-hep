@@ -42,7 +42,13 @@ class Uncertainty(Calculation):
     tuple elements should be the type of the underlying calculation - either a
     count or a histogram.
     """
-    pass
+
+    def name(self):
+        """Returns the name of the uncertainty.
+
+        Implementers must override this method.
+        """
+        raise NotImplementedError('abstract method')
 
 
 class StatisticalUncertainty(Calculation):
@@ -59,6 +65,11 @@ class StatisticalUncertainty(Calculation):
         """
         # Store the base calculation
         self._calculation = calculation
+
+    def name(self):
+        """Returns the name of the uncertainty.
+        """
+        return "Statistical"
 
     def __call__(self, process, region):
         """Evaluates the uncertainty on the given process/region.
@@ -271,11 +282,19 @@ class UncertaintyBand(Calculation):
         return band
 
 
-def combine_uncertainty_bands(bands, title = 'Uncertainty'):
+def combine_uncertainty_bands(bands, sum_values, title = 'Uncertainty'):
     """Combines the results of multiple UncertaintyBand calculations.
 
     Args:
         bands: The uncertainty bands to combine
+        sum_values: If True, then the y-components of the uncertainty bands are
+            summed (which is what you want when combining uncertainty bands for
+            multiple processes which you will stack).  If False, then the
+            y-component of the first uncertainty band is propagated to the
+            result, the assumption being that all bands have the same
+            y-component (which is what you want when combining uncertainty
+            bands for the same process where only the magnitude of the
+            uncertainties should be summed).
         title: The title to give to the resulting combined band
 
     Returns:
@@ -293,8 +312,12 @@ def combine_uncertainty_bands(bands, title = 'Uncertainty'):
 
     # Loop over all bins
     for i in xrange(0, result.GetN()):
-        # Set the bin content
-        result.SetPoint(i, result.GetX()[i], sum(b.GetY()[i] for b in bands))
+        # Set the bin content if we're summing, otherwise it will already have
+        # been propagated from the first error band
+        if sum_values:
+            result.SetPoint(i,
+                            result.GetX()[i],
+                            sum(b.GetY()[i] for b in bands))
 
         # Set the high error
         result.SetPointEYhigh(i, _sum_quadrature((b.GetErrorYhigh(i)
