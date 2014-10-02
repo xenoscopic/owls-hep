@@ -28,6 +28,7 @@ from owls_parallel import parallelized
 
 # owls-hep imports
 from owls_hep.process import styled
+from owls_hep.calculation import Calculation
 
 
 class Distribution(object):
@@ -198,7 +199,7 @@ def _cache_mapper(process, region, distribution, _load_hints = None):
 @styled
 @_rootify
 @persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
-def histogram(process, region, distribution, _load_hints = None):
+def _histogram(process, region, distribution, _load_hints = None):
     """Generates a NumPy histogram of a distribution a process in a region.
 
     The style of the process is applied to the result.
@@ -245,3 +246,31 @@ def histogram(process, region, distribution, _load_hints = None):
         distribution.expressions,
         distribution.binnings
     )
+
+
+class Histogram(Calculation):
+    """A histogramming calculation.
+    """
+
+    def __init__(self, distribution):
+        """Initializes a new instance of the histogramming calculation.
+
+        Args:
+            distribution: The distribution which the calculation should
+                generate when evaluated
+        """
+        # Store the distribution
+        self._distribution = distribution
+
+    def __call__(self, process, region):
+        """Histograms weighted events passing a region's selection into a
+        distribution.
+
+        Args:
+            process: The process whose weighted events should be histogrammed
+            region: The region providing selection/weighting for the histogram
+
+        Returns:
+            A rootpy histogram representing the resultant distribution.
+        """
+        return _histogram(process, region, self._distribution)

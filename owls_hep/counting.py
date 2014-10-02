@@ -12,10 +12,13 @@ from owls_data.counting import count as _count
 # owls-parallel imports
 from owls_parallel import parallelized
 
+# owls-hep imports
+from owls_hep.calculation import Calculation
+
 
 @parallelized(lambda p, r: 1.0, lambda p, r: (p, r))
 @persistently_cached('owls_hep.counting.count', lambda p, r: (p, r))
-def count(process, region):
+def _count(process, region):
     """Computes the weighted event count of a process in a region.
 
     Args:
@@ -33,3 +36,20 @@ def count(process, region):
 
     # Compute the count
     return _count(process.load(region_properties), weighted_selection)
+
+
+class Count(Calculation):
+    """A counting calculation.
+    """
+
+    def __call__(self, process, region):
+        """Counts the number of weighted events passing a region's selection.
+
+        Args:
+            process: The process whose weighted events should be counted
+            region: The region providing selection/weighting for the count
+
+        Returns:
+            The number of weighted events passing the region's selection.
+        """
+        return _count(process, region)
