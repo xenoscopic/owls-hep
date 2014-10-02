@@ -31,9 +31,6 @@ __all__ = [
 class Uncertainty(Calculation):
     """Abstract base class for all uncertainties.
 
-    All uncertainties should have a constructor which takes a single argument -
-    the base calculation on which to calculate the uncertainty.
-
     All uncertainty calculations should return a tuple of the form:
 
         (overall_up, overall_down, shape_up, shape_down)
@@ -43,6 +40,19 @@ class Uncertainty(Calculation):
     count or a histogram.
     """
 
+    def __init__(self, calculation):
+        """Initializes a new instance of the Uncertainty class.
+
+        Subclasses should call this method.
+
+        Args:
+            calculation: The base calculation, which should return either a
+                count or a histogram.  This will be accessible via the
+                calculation member function.
+        """
+        # Store the calculation
+        self._calculation = calculation
+
     def name(self):
         """Returns the name of the uncertainty.
 
@@ -50,21 +60,44 @@ class Uncertainty(Calculation):
         """
         raise NotImplementedError('abstract method')
 
+    def calculation(self, process, region):
+        """Executes the underlying calculation, for use by subclasses.
 
-class StatisticalUncertainty(Calculation):
+        Args:
+            process: The process to consider
+            region: The region to consider
+
+        Returns:
+            The result of the underlying calculation.
+        """
+        return self._calculation(process, region)
+
+    def __call__(self, process, region):
+        """Calculates the uncertainty.
+
+        Implementers must override this method.
+
+        Args:
+            process: The process to consider
+            region: The region to consider
+
+        Returns:
+            A tuple of the form:
+
+            (overall_up, overall_down, shape_up, shape_down)
+
+        Overall uncertainty tuple elements should be numbers.  Shape
+        uncertainty tuple elements should be the type of the underlying
+        calculation - either a count or a histogram.  Overall and shape
+        components may be None.
+        """
+        raise NotImplementedError('abstract method')
+
+
+class StatisticalUncertainty(Uncertainty):
     """Computes the statistical uncertainty associated with a count or
     distribution.
     """
-
-    def __init__(self, calculation):
-        """Initializes a new instance of the StatisticalUncertainty class.
-
-        Args:
-            calculation: The base calculation, which should return either a
-                count or a histogram
-        """
-        # Store the base calculation
-        self._calculation = calculation
 
     def name(self):
         """Returns the name of the uncertainty.
@@ -82,7 +115,7 @@ class StatisticalUncertainty(Calculation):
             A tuple of the form (shape_up, shape_down).
         """
         # Execute the calculation
-        value = self._calculation(process, region)
+        value = self.calculation(process, region)
 
         # Statistical uncertainty is a bit of a special case, because it is
         # derived from the result of the calculation itself, and not a

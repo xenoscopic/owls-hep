@@ -10,6 +10,14 @@ from copy import deepcopy
 from owls_data.expression import multiplied
 
 
+# Set up default exports
+__all__ = [
+    'Variation',
+    'Reweighted',
+    'Region'
+]
+
+
 class Variation(object):
     """Represents a variation which can be applied to a region.
     """
@@ -58,6 +66,38 @@ class Variation(object):
             A tuple of the form (varied_weight, varied_selection).
         """
         raise NotImplementedError('abstract method')
+
+
+class Reweighted(Variation):
+    """A reusable region variation which multiplies an expression into the
+    region weight.
+    """
+
+    def __init__(self, weight):
+        """Initializes a new instance of the Reweighted class.
+
+        Args:
+            weight: The weight expression to incorporate into the region
+        """
+        # Store the weight
+        self._weight = weight
+
+    def state(self):
+        """Returns a representation of the variation's internal state.
+        """
+        return (self._weight,)
+
+    def __call__(self, weight, selection):
+        """Add's an expression to a region's weight.
+
+        Args:
+            weight: The existing weight expression
+            selection: The existing selection expression
+
+        Returns:
+            A tuple of the form (varied_weight, varied_selection).
+        """
+        return (multiplied(weight, self._weight), selection)
 
 
 class Region(object):
