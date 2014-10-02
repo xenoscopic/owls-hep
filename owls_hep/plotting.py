@@ -600,6 +600,9 @@ class Plot(object):
             error_band: The error band to draw (a TGraphAsymmErrors)
         """
         # Style it
+        # HACK: Setting the marker style to 0 specifies this should be filled
+        # in the legend
+        error_band.SetMarkerStyle(0)
         error_band.SetMarkerSize(0)
         error_band.SetFillStyle(self.PLOT_ERROR_BAND_FILL_STYLE)
         error_band.SetFillColor(self.PLOT_ERROR_BAND_FILL_COLOR)
@@ -856,7 +859,7 @@ class Plot(object):
             title = histogram.GetTitle()
             # NOTE: Convention: legend for histograms with a non-default
             # marker style to be drawn with lp
-            if histogram.GetMarkerStyle() != 1:
+            if histogram.GetMarkerStyle() != 0:
                 self._legend.AddEntry(histogram, title, 'lp')
             else:
                 self._legend.AddEntry(histogram, title, 'f')

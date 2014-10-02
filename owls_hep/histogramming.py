@@ -5,15 +5,13 @@ region.
 
 # System imports
 from uuid import uuid4
+from functools import wraps
 
 # Six imports
 from six import string_types
 
 # Pandas import
 from pandas import merge
-
-# ROOT imports
-from ROOT import TH1F, TH2F, TH3F
 
 # rootpy imports
 from rootpy.plotting import Hist, Hist2D, Hist3D
@@ -23,7 +21,7 @@ from owls_cache.persistent import cached as persistently_cached
 
 # owls-data imports
 from owls_data.expression import properties
-from owls_data.histogramming import histogram as _histogram
+from owls_data.histogramming import histogram as _raw_histogram
 
 # owls-parallel imports
 from owls_parallel import parallelized
@@ -134,13 +132,19 @@ def _numpy_to_root_histogram(histogram):
     return result
 
 
+# Decorator to convert numpy histograms to ROOT histograms using
+# _numpy_to_root_histogram
+def _rootify(f):
+    # Create the wrapper function
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        return _numpy_to_root_histogram(f(*args, **kwargs))
+    return wrapper
+
+
 # Dummy function to return fake values when parallelizing
 def _parallel_mocker(process, region, distribution):
-    # Create a unique id
-    name_title = uuid4().hex
-
-    # Create a bogus histogram
-    return TH1F(name_title, name_title, 1, 0, 1)
+    return Hist(1, 0, 1)
 
 
 # Histogram parallelization mapper.  We map/group based on process to maximize
@@ -192,10 +196,10 @@ def _cache_mapper(process, region, distribution, _load_hints = None):
 
 @parallelized(_parallel_mocker, _parallel_mapper, _parallel_batcher)
 @styled
+@_rootify
 @persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
 def histogram(process, region, distribution, _load_hints = None):
-    """Generates a ROOT histogram of the specified event properties in the
-    given region.
+    """Generates a NumPy histogram of a distribution a process in a region.
 
     The style of the process is applied to the result.
 
@@ -210,7 +214,7 @@ def histogram(process, region, distribution, _load_hints = None):
             provided by users)
 
     Returns:
-        A ROOT histogram.
+        A NumPy histogram.
     """
     # Compute weighted selection
     weighted_selection = region.weighted_selection()
@@ -235,11 +239,9 @@ def histogram(process, region, distribution, _load_hints = None):
     data = process.load(required_properties)
 
     # Create the NumPy histogram and convert it to a ROOT histogram
-    return _numpy_to_root_histogram(
-        _histogram(
-            data,
-            weighted_selection,
-            distribution.expressions,
-            distribution.binnings
-        )
+    return _raw_histogram(
+        data,
+        weighted_selection,
+        distribution.expressions,
+        distribution.binnings
     )

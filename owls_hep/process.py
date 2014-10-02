@@ -227,11 +227,16 @@ def styled(f):
         # Apply style
         result.SetTitle(title)
         result.SetLineColor(line_color)
+        result.SetFillStyle(1001)
         result.SetFillColor(fill_color)
         if marker_style is not None:
             result.SetMarkerStyle(marker_style)
             result.SetMarkerSize(1)
             result.SetMarkerColor(result.GetLineColor())
+        else:
+            # HACK: Set marker style to an invalid value if not specified,
+            # because we need some way to differentiate rendering in the legend
+            result.SetMarkerStyle(0)
 
         # Make lines visible
         result.SetLineWidth(2)
