@@ -69,7 +69,7 @@ class StatisticalUncertainty(Calculation):
     def name(self):
         """Returns the name of the uncertainty.
         """
-        return "Statistical"
+        return 'Statistical'
 
     def __call__(self, process, region):
         """Evaluates the uncertainty on the given process/region.
