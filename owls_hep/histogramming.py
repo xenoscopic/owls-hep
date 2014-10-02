@@ -13,7 +13,10 @@ from six import string_types
 from pandas import merge
 
 # ROOT imports
-from ROOT import TH1F, TH2F, TH3F, TColor
+from ROOT import TH1F, TH2F, TH3F
+
+# rootpy imports
+from rootpy.plotting import Hist, Hist2D, Hist3D
 
 # owls-cache imports
 from owls_cache.persistent import cached as persistently_cached
@@ -65,27 +68,16 @@ class Distribution(object):
                      self.y_label))
 
 
-def _numpy_to_root_histogram(histogram,
-                             name = None,
-                             title = None,
-                             x_label = None,
-                             y_label = None):
+def _numpy_to_root_histogram(histogram):
     """Converts a NumPy histogram object into a ROOT histogram object.
 
     Args:
         histogram: A NumPy histogram (i.e. the tuple returned by histogramdd)
             of dimension <= 3
-        name: The name to use for the ROOT histogram.  If None (the default) a
-            random and unique id will be used.
-        title: The title to use for the ROOT histogram.  If None (the default)
-            the name of the histogram will be used.
-        x_label: The TLatex x-axis label to use for the ROOT histogram.  If
-            None (the default), no x-axis label will be set.
-        y_label: The TLatex y-axis label to use for the ROOT histogram.  If
-            None (the default), no y-axis label will be set.
 
     Returns:
-        An equivalent ROOT histogram, of the THND variety.
+        An equivalent ROOT histogram, of the THND variety.  Actually, a rootpy
+        subclass.
     """
     # Decompose the histogram tuple
     values, edges = histogram
@@ -96,29 +88,24 @@ def _numpy_to_root_histogram(histogram,
         raise ValueError('ROOT can only handle histograms with 1 <= dimension '
                          '<= 3')
 
-    # Figure out what we're going to do for name/title
-    name = name or uuid4().hex
-    title = title or name
-
     # Convert to the appropriate histogram class
     # TODO: Is there a better way than using floats for everything?  Perhaps we
     # can use Panda's eval() infrastructure to extract type information.
-    # NOTE: The '- 3' on all of the n_bins arguments here is because we need to
-    # subtract off our underflow/overflow constants (-inf, +inf) and because
-    # the last entry in the array specifies the upper edge of the last bin.
+    # NOTE: We don't include the first and last bins in the specification to
+    # ROOT because these are (-inf, +inf) to emulate underflow/overflow, and
+    # ROOT implicitly adds underflow/overflow bins.
+    # HACK: We have to convert the edge arrays to lists - though as small as
+    # they are, this is probably not a performance issue
     if dimensions == 1:
         # Create a 1-d histogram
-        result = TH1F(name, title,
-                      len(edges[0]) - 3, edges[0][1:-1])
+        result = Hist(list(edges[0][1:-1]))
 
         # Set values
         for x in xrange(0, values.shape[0]):
             result.SetBinContent(x, values[x])
     elif dimensions == 2:
         # Create a 2-d histogram
-        result = TH2F(name, title,
-                      len(edges[0]) - 3, edges[0][1:-1],
-                      len(edges[1]) - 3, edges[1][1:-1])
+        result = Hist2D(list(edges[0][1:-1]), list(edges[1][1:-1]))
 
         # Set values
         for x in xrange(0, values.shape[0]):
@@ -126,22 +113,15 @@ def _numpy_to_root_histogram(histogram,
                 result.SetBinContent(x, y, values[x][y])
     else:
         # Create a 3-d histogram
-        result = TH3F(name, title,
-                      len(edges[0]) - 3, edges[0][1:-1],
-                      len(edges[1]) - 3, edges[1][1:-1],
-                      len(edges[2]) - 3, edges[2][1:-1])
+        result = Hist3D(list(edges[0][1:-1]),
+                        list(edges[1][1:-1]),
+                        list(edges[2][1:-1]))
 
         # Set values
         for x in xrange(0, values.shape[0]):
             for y in xrange(0, values.shape[1]):
                 for z in xrange(0, values.shape[2]):
                     result.SetBinContent(x, y, z, values[x][y][z])
-
-    # Set axis labels if necessary
-    if x_label is not None:
-        result.GetXaxis().SetTitle(x_label)
-    if y_label is not None:
-        result.GetYaxis().SetTitle(y_label)
 
     # Calculate errors.  In the event that Sumw2 is on automatically, the
     # errors will not be updated when we call SetBinContent, so we need to
@@ -261,7 +241,5 @@ def histogram(process, region, distribution, _load_hints = None):
             weighted_selection,
             distribution.expressions,
             distribution.binnings
-        ),
-        x_label = distribution.x_label,
-        y_label = distribution.y_label
+        )
     )
