@@ -155,13 +155,16 @@ class Process(object):
         all_properties = set.union(properties,
                                    *(p.properties() for p in self._patches))
 
-        # Load data, specifying ourselves as the cache name, because if we
-        # apply patches, the resultant DataFrame will be mutated but still
-        # transiently cached, and the load method won't know anything about it
+        # Load data
         result = load_data(self._files, all_properties, {
             'tree': self._tree,
             'tree_weight_property': 'tree_weight'
-        }, cache = self)
+        })
+
+        # If we have patches, make a copy of the dataframe before applying them
+        # because the dataframe is cached
+        if len(self._patches) > 0:
+            result = result.copy()
 
         # Apply patches
         for p in self._patches:
