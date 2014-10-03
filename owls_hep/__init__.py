@@ -76,6 +76,12 @@ class RootNumpyDataLoadingBackend(DataLoadingBackend):
                 tree_weight_property: The virtual property into which the tree
                     weight should be loaded, or None to ignore tree weights
                     (defaults to None)
+                start: The start index of the load (defaults to None, meaning
+                    the beginning of the tree)
+                stop: The stop index of the load (defaults to None, meaning the
+                    end of the tree)
+                step: The step at which to load entries (defaults to None,
+                    meaning a step size of 1)
 
         Returns:
             A Pandas DataFrame object with the specified data.
@@ -87,6 +93,11 @@ class RootNumpyDataLoadingBackend(DataLoadingBackend):
         # loaded
         tree_weight_property = options.get('tree_weight_property', None)
 
+        # Compute slice parameters
+        start = options.get('start', None)
+        stop = options.get('stop', None)
+        step = options.get('step', None)
+
         # Remove tree_weight_property from required properties - it will be
         # loaded implicitly
         if tree_weight_property in properties:
@@ -97,6 +108,9 @@ class RootNumpyDataLoadingBackend(DataLoadingBackend):
             filenames = url_or_urls,
             treename = tree,
             branches = list(properties),
+            start = start,
+            stop = stop,
+            step = step,
             include_weight = tree_weight_property is not None,
             weight_name = tree_weight_property
         ))
