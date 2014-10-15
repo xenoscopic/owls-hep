@@ -95,7 +95,7 @@ class Distribution(object):
         # Validate that expression and binning counts jive
         if len(self._expressions) != len(self._binnings):
             raise ValueError('histogram bin specifications must have the same '
-                             'length as the number of dimensions')
+                             'length as expression specifications')
 
     def __hash__(self):
         """Returns a hash of those quantities affecting the resultant
@@ -139,7 +139,7 @@ class Distribution(object):
                 raise ValueError('invalid fixed-width bin specification')
 
             # Expand them to full edge lists, adding 1 to the bin count so that
-            # the last edge is included.  Unfortunately there is no way to
+            # at least 2 edges are generated.  Unfortunately there is no way to
             # specify a dtype to linspace, but the implementation is hard-coded
             # to return a float, so we'll go with it.
             return numpy.linspace(binning[1], binning[2], binning[3] + 1)
