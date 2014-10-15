@@ -10,18 +10,21 @@ from functools import wraps
 # Six imports
 from six import string_types
 
+# NumPy imports
+import numpy
+
 # Pandas import
 from pandas import DataFrame
 
 # rootpy imports
-from rootpy.plotting import Hist, Hist2D, Hist3D
+from ROOT import TH1F, TH2F, TH3F
 
 # owls-cache imports
 from owls_cache.persistent import cached as persistently_cached
 
 # owls-data imports
 from owls_data.expression import properties
-from owls_data.histogramming import histogram as _raw_histogram
+from owls_data.evaluation import evaluate
 
 # owls-parallel imports
 from owls_parallel import parallelized
@@ -51,17 +54,54 @@ class Distribution(object):
 
         Args:
             name: A name by which to refer to the histogram
-            expressions: See owls.data.histogramming.histogram
-            binnings: See owls.data.histogramming.histogram
+            expressions: The expression (as a string or 1-tuple of a string) or
+                expressions (as an N-tuple of strings), in terms of dataset
+                variables, to histogram.  The multiplicity of expressions
+                determines the dimensionality of the histogram.  Each
+                expression must be a string evaluable using
+                owls.data.evaluation.evaluate.
+            binnings: The binning (as a binning or 1-tuple of a binning) or
+                binnings (as an N-tuple of binnings) to use for the axix/axes
+                of the histogram.  The multiplicity of binnings must match that
+                of expressions.  Each binning must be a tuple of one of two
+                forms:
+
+                    ('fixed', low_bin_left_edge, high_bin_right_edge, n_bins)
+
+                or
+
+                    ('variable',
+                     low_bin_left_edge,
+                     second_bin_left_edge,
+                     ...,
+                     high_bin_right_edge)
+
+                If passing a single string (outside of a tuple) for
+                expressions, then binnings must be a single binning object
+                outside of a tuple.
             x_label: The ROOT TLatex label to use for the x-axis
             y_label: The ROOT TLatex label to use for the y-axis
         """
         # Store parameters
         self._name = name
-        self._expressions = expressions
-        self._binnings = binnings
         self._x_label = x_label
         self._y_label = y_label
+
+        # Normalize expressions and binnings by converting them to tuples if
+        # they are single elements.  We don't check the type of binnings, since
+        # it will always be some manner of tuple, and the docstrings state it
+        # must be a single element if expressions is a single element.
+        if isinstance(expressions, string_types):
+            self._expressions = (expressions,)
+            self._binnings = (binnings,)
+        else:
+            self._expressions = expressions
+            self._binnings = binnings
+
+        # Validate that expression and binning counts jive
+        if len(self._expressions) != len(self._binnings):
+            raise ValueError('histogram bin specifications must have the same '
+                             'length as the number of dimensions')
 
     def __hash__(self):
         """Returns a hash of those quantities affecting the resultant
@@ -83,10 +123,48 @@ class Distribution(object):
         """
         return self._expressions
 
-    def binnings(self):
-        """Returns the binnings for this distribution.
+    @staticmethod
+    def _expand_binning(binning):
+        """Expands a fixed or variable-width binning specification.
+
+        Args:
+            binning: The binning specification to expand
+
+        Returns:
+            A NumPy array of the bin edges.
         """
-        return self._binnings
+        # Check that the basic format of the specification is correct
+        if not isinstance(binning, tuple) or len(binning) < 1:
+            raise ValueError('invalid bin specification value')
+
+        # Handle based on binning type
+        if binning[0] == 'fixed':
+            # Check length of tuples, making sure it will generate at least 2
+            # edges (we add 1 below)
+            if len(binning) != 4 or binning[3] < 1:
+                raise ValueError('invalid fixed-width bin specification')
+
+            # Expand them to full edge lists, adding 1 to the bin count so that
+            # the last edge is included.  Unfortunately there is no way to
+            # specify a dtype to linspace, but the implementation is hard-coded
+            # to return a float, so we'll go with it.
+            return numpy.linspace(binning[1], binning[2], binning[3] + 1)
+        elif binning[0] == 'variable':
+            # Check length of edge lists (need at least 2 edges in addition to
+            # type specification)
+            if len(binning) < 3:
+                raise ValueError('invalid variable-width bin specification')
+
+            # Take existing edge lists as they come, but ensure they are
+            # typed as floats
+            return numpy.array(binning[1:], dtype = numpy.float)
+        else:
+            raise ValueError('invalid bin specification type')
+
+    def binnings(self):
+        """Returns the expanded binnings for this distribution.
+        """
+        return tuple((Distribution._expand_binning(b) for b in self._binnings))
 
     def x_label(self):
         """Returns the x-axis label for this distribution.
@@ -99,93 +177,34 @@ class Distribution(object):
         return self._y_label
 
 
-def _numpy_to_root_histogram(histogram):
-    """Converts a NumPy histogram object into a ROOT histogram object.
-
-    Args:
-        histogram: A NumPy histogram (i.e. the tuple returned by histogramdd)
-            of dimension <= 3
-
-    Returns:
-        An equivalent ROOT histogram, of the THND variety.  Actually, a rootpy
-        subclass.
-    """
-    # Decompose the histogram tuple
-    values, edges = histogram
-
-    # Check that the number of dimensions is something ROOT can handle
-    dimensions = len(edges)
-    if dimensions < 1 or dimensions > 3:
-        raise ValueError('ROOT can only handle histograms with 1 <= dimension '
-                         '<= 3')
-
-    # Convert to the appropriate histogram class
-    # TODO: Is there a better way than using floats for everything?  Perhaps we
-    # can use Panda's eval() infrastructure to extract type information.
-    # NOTE: We don't include the first and last bins in the specification to
-    # ROOT because these are (-inf, +inf) to emulate underflow/overflow, and
-    # ROOT implicitly adds underflow/overflow bins.
-    # HACK: We have to convert the edge arrays to lists - though as small as
-    # they are, this is probably not a performance issue
-    if dimensions == 1:
-        # Create a 1-d histogram
-        result = Hist(list(edges[0][1:-1]))
-
-        # Set values
-        for x in xrange(0, values.shape[0]):
-            result.SetBinContent(x, values[x])
-    elif dimensions == 2:
-        # Create a 2-d histogram
-        result = Hist2D(list(edges[0][1:-1]), list(edges[1][1:-1]))
-
-        # Set values
-        for x in xrange(0, values.shape[0]):
-            for y in xrange(0, values.shape[1]):
-                result.SetBinContent(x, y, values[x][y])
-    else:
-        # Create a 3-d histogram
-        result = Hist3D(list(edges[0][1:-1]),
-                        list(edges[1][1:-1]),
-                        list(edges[2][1:-1]))
-
-        # Set values
-        for x in xrange(0, values.shape[0]):
-            for y in xrange(0, values.shape[1]):
-                for z in xrange(0, values.shape[2]):
-                    result.SetBinContent(x, y, z, values[x][y][z])
-
-    # Calculate errors.  In the event that Sumw2 is on automatically, the
-    # errors will not be updated when we call SetBinContent, so we need to
-    # clear them and update them.  Instead of using the False flag to Sumw2, we
-    # use a more manual method to maintain compatibility with ROOT 5.32.
-    if result.GetSumw2N() > 0:
-        result.GetSumw2().Set(0)
-    result.Sumw2()
-
-    return result
-
-
 # Dummy function to return fake values when parallelizing
 def _parallel_mocker(process, region, distribution):
-    # Create bogus data
-    data = DataFrame({
-        'variable': [],
-    })
+    # Extract binnings
+    binnings = distribution.binnings()
 
-    # Create bogus expressions
-    expressions = distribution.expressions()
-    if isinstance(expressions, string_types):
-        expressions = 'variable'
+    # Create a unique name and title for the histogram
+    name = title = uuid4().hex
+
+    # Create an empty histogram
+    # NOTE: When specifying explicit bin edges, you aren't passing a length
+    # argument, you are passing an nbins argument, which is length - 1, hence
+    # the code below.  If you pass length for n bins, then you'll get garbage
+    # for the last bin's upper edge and things go nuts in ROOT.
+    dimensionality = len(binnings)
+    if dimensionality == 1:
+        return TH1F(name, title,
+                    len(binnings[0]) - 1, binnings[0])
+    elif dimensionality == 2:
+        return TH2F(name, title,
+                    len(binnings[0]) - 1, binnings[0],
+                    len(binnings[1]) - 1, binnings[1])
+    elif dimensionality == 3:
+        return TH3F(name, title,
+                    len(binnings[0]) - 1, binnings[0],
+                    len(binnings[1]) - 1, binnings[1],
+                    len(binnings[2]) - 1, binnings[2])
     else:
-        expressions = ['variable'] * len(expressions)
-
-    # Create the NumPy histogram and convert it to a ROOT histogram
-    return _raw_histogram(
-        data,
-        'variable',
-        expressions,
-        distribution.binnings()
-    )
+        raise ValueError('ROOT can only histograms 1 - 3 dimensions')
 
 
 # Histogram parallelization mapper.  We map/group based on process to maximize
@@ -235,9 +254,7 @@ def _cache_mapper(process, region, distribution, _load_hints = None):
 @parallelized(_parallel_mocker, _parallel_mapper, _parallel_batcher)
 @persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
 def _histogram(process, region, distribution, _load_hints = None):
-    """Generates a NumPy histogram of a distribution a process in a region.
-
-    The style of the process is applied to the result.
+    """Generates a ROOT histogram of a distribution a process in a region.
 
     Args:
         process: The process whose events should be histogrammed
@@ -250,13 +267,14 @@ def _histogram(process, region, distribution, _load_hints = None):
             provided by users)
 
     Returns:
-        A NumPy histogram.
+        A ROOT histogram, of the TH1F, TH2F, or TH3F variety.
     """
     # Compute weighted selection
     weighted_selection = region.weighted_selection()
 
-    # Compute expressions
+    # Extract expressions and binnings
     expressions = distribution.expressions()
+    binnings = distribution.binnings()
 
     # Compute required data properties
     required_properties = _load_hints if _load_hints is not None else set()
@@ -273,13 +291,60 @@ def _histogram(process, region, distribution, _load_hints = None):
     # Load data
     data = process.load(required_properties)
 
-    # Create the NumPy histogram and convert it to a ROOT histogram
-    return _raw_histogram(
-        data,
-        weighted_selection,
-        expressions,
-        distribution.binnings()
-    )
+    # Evaluate each variable expression, converting the resultant Pandas Series
+    # to a NumPy array
+    # HACK: TH1::FillN only supports 64-bit floating point values, so convert
+    # things.  Would be nice to find a better approach.
+    samples = tuple((evaluate(data, e).values.astype(numpy.float64)
+                     for e
+                     in expressions))
+
+    # Evaluate weights
+    # HACK: TH1::FillN only supports 64-bit floating point values, so convert
+    # things.  Would be nice to find a better approach.
+    weights = evaluate(data, weighted_selection).values.astype(numpy.float64)
+
+    # Create a unique name and title for the histogram
+    name = title = uuid4().hex
+
+    # Create a histogram based on dimensionality
+    # NOTE: When specifying explicit bin edges, you aren't passing a length
+    # argument, you are passing an nbins argument, which is length - 1, hence
+    # the code below.  If you pass length for n bins, then you'll get garbage
+    # for the last bin's upper edge and things go nuts in ROOT.
+    dimensionality = len(expressions)
+    if dimensionality == 1:
+        # Create a one-dimensional histogram
+        result = TH1F(name, title,
+                      len(binnings[0]) - 1, binnings[0])
+
+        # Fill the histogram
+        result.FillN(len(weights), samples[0], weights)
+    elif dimensionality == 2:
+        # Create a two-dimensional histogram
+        result = TH2F(name, title,
+                      len(binnings[0]) - 1, binnings[0],
+                      len(binnings[1]) - 1, binnings[1])
+
+        # Fill the histogram
+        result.FillN(len(weights), samples[0], samples[1], weights)
+    elif dimensionality == 3:
+        # Create a three-dimensional histogram
+        result = TH3F(name, title,
+                      len(binnings[0]) - 1, binnings[0],
+                      len(binnings[1]) - 1, binnings[1],
+                      len(binnings[2]) - 1, binnings[2])
+
+        # HACK: TH3 doesn't have a FillN method, so we have to do things the
+        # slow way.
+        # TODO: We may want to put a warning here at some point.
+        for x, y, z, w in zip(samples[0], samples[1], samples[2], weights):
+            result.Fill(x, y, z, w)
+    else:
+        raise ValueError('ROOT can only histograms 1 - 3 dimensions')
+
+    # All done
+    return result
 
 
 class Histogram(Calculation):
@@ -307,14 +372,11 @@ class Histogram(Calculation):
         Returns:
             A rootpy histogram representing the resultant distribution.
         """
-        # Compute the NumPy histogram
-        numpy_histogram = _histogram(process, region, self._distribution)
-
-        # Convert it to a ROOT histogram
-        root_histogram = _numpy_to_root_histogram(numpy_histogram)
+        # Compute the histogram
+        result = _histogram(process, region, self._distribution)
 
         # Style the histogram
-        process.style(root_histogram)
+        process.style(result)
 
         # All done
-        return root_histogram
+        return result
