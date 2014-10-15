@@ -7,7 +7,7 @@ import re
 from copy import deepcopy
 
 # owls-data imports
-from owls_data.expression import multiplied
+from owls_hep.expression import multiplied
 
 
 # Set up default exports

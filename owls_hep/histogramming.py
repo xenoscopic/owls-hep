@@ -13,23 +13,17 @@ from six import string_types
 # NumPy imports
 import numpy
 
-# Pandas import
-from pandas import DataFrame
-
 # rootpy imports
 from ROOT import TH1F, TH2F, TH3F
 
 # owls-cache imports
 from owls_cache.persistent import cached as persistently_cached
 
-# owls-data imports
-from owls_data.expression import properties
-from owls_data.evaluation import evaluate
-
 # owls-parallel imports
 from owls_parallel import parallelized
 
 # owls-hep imports
+from owls_hep.expression import properties, normalized
 from owls_hep.calculation import Calculation
 
 
@@ -156,7 +150,7 @@ class Distribution(object):
                 raise ValueError('invalid variable-width bin specification')
 
             # Take existing edge lists as they come, but ensure they are
-            # typed as floats
+            # typed as float
             return numpy.array(binning[1:], dtype = numpy.float)
         else:
             raise ValueError('invalid bin specification type')
@@ -216,18 +210,16 @@ def _parallel_mapper(process, region, distribution):
 # Histogram argument extractor for calling by args/kwargs and extracting region
 # and expressions
 def _parallel_extractor(process, region, distribution):
-    return (region, distribution)
+    return (process, region, distribution)
 
 
 # Histogram parallelization batcher
 def _parallel_batcher(function, args_kwargs):
     # Create a combined set of properties necessary for all calls
     all_properties = set()
-
-    # Go through all args/kwargs pairs
     for args, kwargs in args_kwargs:
         # Extract region and expressions
-        region, distribution = _parallel_extractor(*args, **kwargs)
+        _, region, distribution = _parallel_extractor(*args, **kwargs)
 
         # Add region properties
         all_properties.update(properties(region.weighted_selection()))
@@ -239,32 +231,39 @@ def _parallel_batcher(function, args_kwargs):
         else:
             all_properties.update(*(properties(e) for e in expressions))
 
+    # Since we map/group by process, we can assume all calls have the same
+    # process, and we can load reusable data
+    args_0, kwargs_0 = args_kwargs[0]
+    process, _, _ = _parallel_extractor(*args_0, **kwargs_0)
+    data = process.load(all_properties)
+
     # Go through all args/kwargs pairs and call the function
     for args, kwargs in args_kwargs:
-        # Call the functions with load hints
-        kwargs['_load_hints'] = all_properties
+        # Call the functions with pre-loaded data
+        kwargs['_data'] = data
         function(*args, **kwargs)
 
 
 # Histogram persistent cache mapper
-def _cache_mapper(process, region, distribution, _load_hints = None):
+def _cache_mapper(process, region, distribution, _data = None):
     return (process, region, distribution)
 
 
 @parallelized(_parallel_mocker, _parallel_mapper, _parallel_batcher)
 @persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
-def _histogram(process, region, distribution, _load_hints = None):
+def _histogram(process, region, distribution, _data = None):
     """Generates a ROOT histogram of a distribution a process in a region.
 
     Args:
         process: The process whose events should be histogrammed
         region: The region whose weighting/selection should be applied
         distribution: The distribution to histogram
-        _load_hints: A set of properties which the histogram will load in
-            addition to the minimum set required so that future calls will
-            hit transiently cached loads and evaluations (this is a private
-            argument for parallelization optimization and should not be
-            provided by users)
+        _data: If provided, this argument will replace the data which would
+            normally be loaded for the process.  It must contain all properties
+            necessary to evaluate the region's weighted-selection and
+            distribution expressions.  This argument should not normally
+            provided, as it is used internally for parallelization
+            optimization.
 
     Returns:
         A ROOT histogram, of the TH1F, TH2F, or TH3F variety.
@@ -277,7 +276,7 @@ def _histogram(process, region, distribution, _load_hints = None):
     binnings = distribution.binnings()
 
     # Compute required data properties
-    required_properties = _load_hints if _load_hints is not None else set()
+    required_properties = set()
 
     # Add in those properties necessary to evaluate the weighted selection
     required_properties.update(properties(weighted_selection))
@@ -288,21 +287,23 @@ def _histogram(process, region, distribution, _load_hints = None):
     else:
         required_properties.update(*(properties(e) for e in expressions))
 
-    # Load data
-    data = process.load(required_properties)
+    # Load data (if necessary)
+    data = process.load(required_properties) if _data is None else _data
 
     # Evaluate each variable expression, converting the resultant Pandas Series
     # to a NumPy array
     # HACK: TH1::FillN only supports 64-bit floating point values, so convert
     # things.  Would be nice to find a better approach.
-    samples = tuple((evaluate(data, e).values.astype(numpy.float64)
+    samples = tuple((data.eval(normalized(e)).values.astype(numpy.float64)
                      for e
                      in expressions))
 
-    # Evaluate weights
+    # Evaluate weights, converting the resultant Pandas Series to a NumPy array
     # HACK: TH1::FillN only supports 64-bit floating point values, so convert
     # things.  Would be nice to find a better approach.
-    weights = evaluate(data, weighted_selection).values.astype(numpy.float64)
+    weights = data.eval(normalized(weighted_selection)).values.astype(
+        numpy.float64
+    )
 
     # Create a unique name and title for the histogram
     name = title = uuid4().hex

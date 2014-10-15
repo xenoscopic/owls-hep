@@ -3,13 +3,17 @@
 
 
 # System imports
+import warnings
 from copy import deepcopy
 
 # Six imports
 from six import string_types
 
-# owls-data imports
-from owls_data.loading import load as load_data
+# Pandas imports
+from pandas import DataFrame
+
+# root_numpy imports
+from root_numpy import root2array, RootNumpyUnconvertibleWarning
 
 
 # Set up default exports
@@ -17,6 +21,10 @@ __all__ = [
     'Patch',
     'Process',
 ]
+
+
+# Ignore root_numpy unconvertible warnings
+warnings.simplefilter('ignore', RootNumpyUnconvertibleWarning)
 
 
 class Patch(object):
@@ -154,16 +162,18 @@ class Process(object):
         all_properties = set.union(properties,
                                    *(p.properties() for p in self._patches))
 
-        # Load data
-        result = load_data(self._files, all_properties, {
-            'tree': self._tree,
-            'tree_weight_property': 'tree_weight'
-        })
+        # Remove tree weight branch if present, it will be added implicitly
+        if 'tree_weight' in all_properties:
+            all_properties.remove('tree_weight')
 
-        # If we have patches, make a copy of the dataframe before applying them
-        # because the dataframe is cached
-        if len(self._patches) > 0:
-            result = result.copy()
+        # Load the data
+        result = DataFrame(root2array(
+            filenames = self._files,
+            treename = self._tree,
+            branches = list(all_properties),
+            include_weight = True,
+            weight_name = 'tree_weight'
+        ))
 
         # Apply patches
         for p in self._patches:

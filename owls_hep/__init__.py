@@ -2,23 +2,8 @@
 """
 
 
-# System imports
-import warnings
-
-# Six imports
-from six import string_types
-
-# Pandas imports
-from pandas import DataFrame
-
 # ROOT imports
 import ROOT
-
-# root_numpy imports
-from root_numpy import root2array, RootNumpyUnconvertibleWarning
-
-# owls-data imports
-from owls_data.loading.backends import DataLoadingBackend, register_backend
 
 
 # Export the owls-hep version
@@ -37,84 +22,3 @@ ROOT.PyConfig.IgnoreCommandLineOptions = True
 
 # Ignore ROOT info messages and warnings (there are just too many)
 ROOT.gErrorIgnoreLevel = ROOT.kSysError
-
-
-# Ignore root_numpy unconvertible warnings
-warnings.simplefilter('ignore', RootNumpyUnconvertibleWarning)
-
-
-class RootNumpyDataLoadingBackend(DataLoadingBackend):
-    """Data loading backend which reads from ROOT files via root_numpy.
-    """
-
-    def can_handle_urls(self, url_or_urls):
-        """Determines whether or not this backend supports loading from the
-        specified URL.
-
-        Args:
-            url_or_urls: The URL to test, or a list of URLs to test
-
-        Returns:
-            True if this backend can load the URL, False otherwise.
-        """
-        # Convert to a list if we have a single URL
-        if isinstance(url_or_urls, string_types):
-            url_or_urls = [url_or_urls]
-
-        # Make sure we can handle all of the URLs
-        return all([url.endswith('root') for url in url_or_urls])
-
-    def load(self, url_or_urls, properties, options):
-        """Loads the data from the URL.
-
-        Args:
-            url_or_urls: The URL to load, or a list of URLs to load
-            properties: A Python set of properties of the data to load
-            options: The RootNumpyDataLoadingBackend accepts to options:
-
-                tree: The name of the tree to load (defaults to 'tree')
-                tree_weight_property: The virtual property into which the tree
-                    weight should be loaded, or None to ignore tree weights
-                    (defaults to None)
-                start: The start index of the load (defaults to None, meaning
-                    the beginning of the tree)
-                stop: The stop index of the load (defaults to None, meaning the
-                    end of the tree)
-                step: The step at which to load entries (defaults to None,
-                    meaning a step size of 1)
-
-        Returns:
-            A Pandas DataFrame object with the specified data.
-        """
-        # Compute the name of the tree to load
-        tree = options.get('tree', 'tree')
-
-        # Compute the name of the property into which the tree weight should be
-        # loaded
-        tree_weight_property = options.get('tree_weight_property', None)
-
-        # Compute slice parameters
-        start = options.get('start', None)
-        stop = options.get('stop', None)
-        step = options.get('step', None)
-
-        # Remove tree_weight_property from required properties - it will be
-        # loaded implicitly
-        if tree_weight_property in properties:
-            properties.remove(tree_weight_property)
-
-        # Load the data
-        return DataFrame(root2array(
-            filenames = url_or_urls,
-            treename = tree,
-            branches = list(properties),
-            start = start,
-            stop = stop,
-            step = step,
-            include_weight = tree_weight_property is not None,
-            weight_name = tree_weight_property
-        ))
-
-
-# Register the root_numpy data loading backend
-register_backend(RootNumpyDataLoadingBackend())

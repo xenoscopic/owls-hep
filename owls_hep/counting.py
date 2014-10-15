@@ -5,14 +5,11 @@
 # owls-cache imports
 from owls_cache.persistent import cached as persistently_cached
 
-# owls-data imports
-from owls_data.expression import properties
-from owls_data.evaluation import evaluate
-
 # owls-parallel imports
 from owls_parallel import parallelized
 
 # owls-hep imports
+from owls_hep.expression import properties, normalized
 from owls_hep.calculation import Calculation
 
 
@@ -38,7 +35,7 @@ def _count(process, region):
     data = process.load(required_properties)
 
     # Compute the count
-    return evaluate(data, weighted_selection).sum()
+    return data.eval(normalized(weighted_selection)).sum()
 
 
 class Count(Calculation):

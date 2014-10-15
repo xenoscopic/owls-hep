@@ -28,7 +28,6 @@ setup(
         'rootpy >= 0.7.1',
         'owls-config >= 0.0.1',
         'owls-cache >= 0.0.1',
-        'owls-data >= 0.0.1',
         'owls-parallel >= 0.0.1',
     ],
 
