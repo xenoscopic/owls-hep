@@ -249,6 +249,7 @@ def _parallel_batcher(function, args_kwargs):
     # Clear the load caches of the caching loader
     _caching_loader.caches.clear()
 
+
 # Histogram persistent cache mapper
 def _cache_mapper(process, region, distribution, load_hints = None):
     return (process, region, distribution)
