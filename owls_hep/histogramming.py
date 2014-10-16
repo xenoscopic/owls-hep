@@ -231,7 +231,9 @@ def _parallel_batcher(function, args_kwargs):
         _, region, distribution = _parallel_extractor(*args, **kwargs)
 
         # Add region properties
-        all_properties.update(properties(region.weighted_selection()))
+        selection, weight = region.selection_weight()
+        all_properties.update(properties(selection))
+        all_properties.update(properties(weight))
 
         # Add expression properties
         expressions = distribution.expressions()
@@ -275,7 +277,7 @@ def _histogram(process, region, distribution, load_hints = None):
         A ROOT histogram, of the TH1F, TH2F, or TH3F variety.
     """
     # Compute weighted selection
-    weighted_selection = region.weighted_selection()
+    selection, weight = region.selection_weight()
 
     # Extract expressions and binnings
     expressions = distribution.expressions()
@@ -284,8 +286,9 @@ def _histogram(process, region, distribution, load_hints = None):
     # Compute required data properties
     required_properties = load_hints if load_hints is not None else set()
 
-    # Add in those properties necessary to evaluate the weighted selection
-    required_properties.update(properties(weighted_selection))
+    # Add in those properties necessary to evaluate the selection and weight
+    required_properties.update(properties(selection))
+    required_properties.update(properties(weight))
 
     # Add in those properties necessary to evaluate expressions
     if isinstance(expressions, string_types):
@@ -299,6 +302,12 @@ def _histogram(process, region, distribution, load_hints = None):
     else:
         data = process.load(required_properties)
 
+    # Extract just those events passing the selection
+    data = data[data.eval(normalized(selection))]
+
+    # Count the number of events passing selection
+    count = len(data)
+
     # Evaluate each variable expression, converting the resultant Pandas Series
     # to a NumPy array
     # HACK: TH1::FillN only supports 64-bit floating point values, so convert
@@ -310,9 +319,7 @@ def _histogram(process, region, distribution, load_hints = None):
     # Evaluate weights, converting the resultant Pandas Series to a NumPy array
     # HACK: TH1::FillN only supports 64-bit floating point values, so convert
     # things.  Would be nice to find a better approach.
-    weights = data.eval(normalized(weighted_selection)).values.astype(
-        numpy.float64
-    )
+    weights = data.eval(normalized(weight)).values.astype(numpy.float64)
 
     # Create a unique name and title for the histogram
     name = title = uuid4().hex
@@ -329,7 +336,9 @@ def _histogram(process, region, distribution, load_hints = None):
                       len(binnings[0]) - 1, binnings[0])
 
         # Fill the histogram
-        result.FillN(len(weights), samples[0], weights)
+        # HACK: TH1::FillN will die if N == 0
+        if count > 0:
+            result.FillN(count, samples[0], weights)
     elif dimensionality == 2:
         # Create a two-dimensional histogram
         result = TH2F(name, title,
@@ -337,7 +346,9 @@ def _histogram(process, region, distribution, load_hints = None):
                       len(binnings[1]) - 1, binnings[1])
 
         # Fill the histogram
-        result.FillN(len(weights), samples[0], samples[1], weights)
+        # HACK: TH1::FillN will die if N == 0
+        if count > 0:
+            result.FillN(count, samples[0], samples[1], weights)
     elif dimensionality == 3:
         # Create a three-dimensional histogram
         result = TH3F(name, title,

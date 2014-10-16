@@ -26,16 +26,21 @@ def _count(process, region):
         The weighted event count in the region.
     """
     # Compute weighted selection
-    weighted_selection = region.weighted_selection()
+    selection, weight = region.selection_weight()
 
     # Compute the weighted selection properties
-    required_properties = properties(weighted_selection)
+    required_properties = set()
+    required_properties.update(properties(selection))
+    required_properties.update(properties(weight))
 
     # Load data
     data = process.load(required_properties)
 
+    # Execute selection
+    data = data[data.eval(normalized(selection))]
+
     # Compute the count
-    return data.eval(normalized(weighted_selection)).sum()
+    return data.eval(normalized(weight)).sum()
 
 
 class Count(Calculation):

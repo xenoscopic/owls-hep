@@ -53,17 +53,17 @@ class Variation(object):
         """
         return ()
 
-    def __call__(self, weight, selection):
+    def __call__(self, selection, weight):
         """Applies a variation to a region's weight and selection.
 
         Implementers must override this method.
 
         Args:
-            weight: The existing weight expression
             selection: The existing selection expression
+            weight: The existing weight expression
 
         Returns:
-            A tuple of the form (varied_weight, varied_selection).
+            A tuple of the form (varied_selection, varied_weight).
         """
         raise NotImplementedError('abstract method')
 
@@ -87,17 +87,17 @@ class Reweighted(Variation):
         """
         return (self._weight,)
 
-    def __call__(self, weight, selection):
+    def __call__(self, selection, weight):
         """Add's an expression to a region's weight.
 
         Args:
-            weight: The existing weight expression
             selection: The existing selection expression
+            weight: The existing weight expression
 
         Returns:
-            A tuple of the form (varied_weight, varied_selection).
+            A tuple of the form (varied_selection, varied_weight).
         """
-        return (multiplied(weight, self._weight), selection)
+        return (selection, multiplied(weight, self._weight))
 
 
 class Region(object):
@@ -105,21 +105,21 @@ class Region(object):
     evaluated.
     """
 
-    def __init__(self, name, weight, selection, label, blinded = False):
+    def __init__(self, name, selection, weight, label, blinded = False):
         """Initialized a new instance of the Region class.
 
         Args:
             name: A name by which to refer to the region
-            weight: A string representing the weight for the region
             selection: A string representing selection for the region
+            weight: A string representing the weight for the region
             label: The ROOT TLatex label string to use when rendering the
                 region
             blinded: Whether or not the region is marked as blinded
         """
         # Store parameters
         self._name = name
-        self._weight = weight
         self._selection = selection
+        self._weight = weight
         self._label = label
         self._blinded = blinded
 
@@ -131,7 +131,7 @@ class Region(object):
         """
         # Hash only weight, selection, and variations since those are all that
         # really matter for evaluation
-        return hash((self._weight, self._selection, self._variations))
+        return hash((self._selection, self._weight, self._variations))
 
     def name(self):
         """Returns the region name.
@@ -161,16 +161,15 @@ class Region(object):
         # All done
         return result
 
-    def weighted_selection(self):
-        """Returns the weighted-selection expression for the region (after
-        applying all variations).
+    def selection_weight(self):
+        """Returns a tuple of (selection, weight) with all variations applied.
         """
         # Grab resultant weight/selection
-        weight, selection = self._weight, self._selection
+        selection, weight = self._selection, self._weight
 
         # Apply any variations
         for v in self._variations:
-            weight, selection = v(weight, selection)
+            selection, weight = v(selection, weight)
 
         # Compute the combined expression
-        return multiplied(weight, selection)
+        return (selection, weight)
