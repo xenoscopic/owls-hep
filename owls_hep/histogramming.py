@@ -17,6 +17,7 @@ import numpy
 from ROOT import TH1F, TH2F, TH3F
 
 # owls-cache imports
+from owls_cache.transient import cached as transiently_cached
 from owls_cache.persistent import cached as persistently_cached
 
 # owls-parallel imports
@@ -207,10 +208,18 @@ def _parallel_mapper(process, region, distribution):
     return (process,)
 
 
-# Histogram argument extractor for calling by args/kwargs and extracting region
-# and expressions
+# Histogram argument converter which can take *args, **kwargs and convert them
+# to *args.  No other way to do this correctly and simply than having a
+# function with the proper names.
 def _parallel_extractor(process, region, distribution):
     return (process, region, distribution)
+
+
+# Caching loader to be able to share data across histogram calls without
+# necessarily pre-loading it
+@transiently_cached(lambda process, properties: (process, tuple(properties)))
+def _caching_loader(process, properties):
+    return process.load(properties)
 
 
 # Histogram parallelization batcher
@@ -231,39 +240,35 @@ def _parallel_batcher(function, args_kwargs):
         else:
             all_properties.update(*(properties(e) for e in expressions))
 
-    # Since we map/group by process, we can assume all calls have the same
-    # process, and we can load reusable data
-    args_0, kwargs_0 = args_kwargs[0]
-    process, _, _ = _parallel_extractor(*args_0, **kwargs_0)
-    data = process.load(all_properties)
-
     # Go through all args/kwargs pairs and call the function
     for args, kwargs in args_kwargs:
-        # Call the functions with pre-loaded data
-        kwargs['_data'] = data
+        # Call the functions with load hints
+        kwargs['load_hints'] = all_properties
         function(*args, **kwargs)
 
+    # Clear the load caches of the caching loader
+    _caching_loader.caches.clear()
 
 # Histogram persistent cache mapper
-def _cache_mapper(process, region, distribution, _data = None):
+def _cache_mapper(process, region, distribution, load_hints = None):
     return (process, region, distribution)
 
 
 @parallelized(_parallel_mocker, _parallel_mapper, _parallel_batcher)
 @persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
-def _histogram(process, region, distribution, _data = None):
+def _histogram(process, region, distribution, load_hints = None):
     """Generates a ROOT histogram of a distribution a process in a region.
 
     Args:
         process: The process whose events should be histogrammed
         region: The region whose weighting/selection should be applied
         distribution: The distribution to histogram
-        _data: If provided, this argument will replace the data which would
-            normally be loaded for the process.  It must contain all properties
-            necessary to evaluate the region's weighted-selection and
-            distribution expressions.  This argument should not normally
-            provided, as it is used internally for parallelization
-            optimization.
+        load_hints: If provided, this argument will hint to _histogram that it
+            should load additional properties when loading data and that it
+            should use the _caching_loader.  This facilitates cached loading of
+            data across multiple calls to _histogram with the same process.
+            This is particularly useful for parallelized histogramming, where
+            the jobs are grouped by process.
 
     Returns:
         A ROOT histogram, of the TH1F, TH2F, or TH3F variety.
@@ -276,7 +281,7 @@ def _histogram(process, region, distribution, _data = None):
     binnings = distribution.binnings()
 
     # Compute required data properties
-    required_properties = set()
+    required_properties = load_hints if load_hints is not None else set()
 
     # Add in those properties necessary to evaluate the weighted selection
     required_properties.update(properties(weighted_selection))
@@ -287,8 +292,11 @@ def _histogram(process, region, distribution, _data = None):
     else:
         required_properties.update(*(properties(e) for e in expressions))
 
-    # Load data (if necessary)
-    data = process.load(required_properties) if _data is None else _data
+    # Load data, using the _caching_loader if load_hints have been provided
+    if load_hints is not None:
+        data = _caching_loader(process, required_properties)
+    else:
+        data = process.load(required_properties)
 
     # Evaluate each variable expression, converting the resultant Pandas Series
     # to a NumPy array
