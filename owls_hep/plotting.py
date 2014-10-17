@@ -821,16 +821,14 @@ class Plot(object):
                 'ATLAS'
             )
 
-    def draw_legend(self, *histograms):
+    def draw_legend(self, *drawables):
         """Draws a legend onto the plot with the specified histograms.
 
         It is recommended that you construct the Plot with plot_header = True
         in order to make space for the legend.
 
         Args:
-            histograms: Each argument of this function after plot may be a
-                single histogram, an iterable of histograms (each of which
-                should be plotted), or a THStack object.
+            drawables: The elements to include in the legend (via AddEntry)
         """
         # Check if we already have a legend
         if hasattr(self, '_legend'):
@@ -860,20 +858,21 @@ class Plot(object):
         self._legend.SetFillStyle(0) # transparent
         self._legend.SetNColumns(self.PLOT_LEGEND_N_COLUMNS)
 
-        # Create a chained list of all histograms.  We decompose THStack
+        # Create a chained list of all drawables.  We decompose THStack
         # objects in reverse order, i.e. top-to-bottom.
-        histograms = \
+        drawables = \
             list(chain(*(drawable_iterable(h, True, True)
                          for h
-                         in histograms)))
+                         in drawables)))
 
         # Add anything to this list that we created internally
-        histograms.extend(self._legend_extras)
+        drawables.extend(self._legend_extras)
 
-        # Because ROOT draws histograms from left-to-right across rows and not
-        # top-to-bottom along columns, we need to do a bit of a pivot on the
-        # list so that the histograms appear in the vertical order of the stack
-        n_entries = len(histograms)
+        # Because ROOT draws legend entries from left-to-right across rows and
+        # not top-to-bottom along columns, we need to do a bit of a pivot on
+        # the list so that the histograms appear in the vertical order of the
+        # stack
+        n_entries = len(drawables)
         n_col = self.PLOT_LEGEND_N_COLUMNS
         n_row = int(ceil(float(n_entries) / n_col))
         legend_order = []
@@ -883,18 +882,18 @@ class Plot(object):
                     # Don't need an outer break, this would only happen on the
                     # last row if n_row * n_col != n_entries
                     break
-                legend_order.append(histograms[r + c * n_row])
+                legend_order.append(drawables[r + c * n_row])
 
-        # Add the histograms
-        for histogram in legend_order:
-            SetOwnership(histogram, False)
-            title = histogram.GetTitle()
-            # NOTE: Convention: legend for histograms with a non-default
+        # Add the drawables
+        for drawable in legend_order:
+            SetOwnership(drawable, False)
+            title = drawable.GetTitle()
+            # NOTE: Convention: legend for drawables with a non-default
             # marker style to be drawn with lp
-            if histogram.GetMarkerStyle() != 0:
-                self._legend.AddEntry(histogram, title, 'lp')
+            if drawable.GetMarkerStyle() != 0:
+                self._legend.AddEntry(drawable, title, 'lp')
             else:
-                self._legend.AddEntry(histogram, title, 'f')
+                self._legend.AddEntry(drawable, title, 'f')
 
         # Draw the legend
         self._legend.Draw()
