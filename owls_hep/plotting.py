@@ -34,16 +34,24 @@ from itertools import chain
 # inconsistent and terrible that we have to stop Python from even touching ROOT
 # graphical objects or ROOT will crash, often due to a double free or some
 # other nonsense.
-from ROOT import TCanvas, TPad, TH1, THStack, TLegend, TLine, TLatex, \
-    SetOwnership
+from ROOT import TCanvas, TPad, TH1, THStack, TGraph, TMath, TLegend, TLine, \
+    TLatex, SetOwnership
 
 
 # Convenience function for generating random IDs
 _rand_uuid = lambda: uuid4().hex
 
 
+# Convenience function to check if an object is a TH1
+is_histo = lambda h: isinstance(h, TH1)
+
+
 # Convenience function to check if an object is a THStack
 is_stack = lambda h: isinstance(h, THStack)
+
+
+# Convenience function to check if an object is a TGraph
+is_graph = lambda g: isinstance(g, TGraph)
 
 
 def histogram_iterable(histograms_or_stack,
@@ -66,7 +74,10 @@ def histogram_iterable(histograms_or_stack,
         An iterable of the histograms in the provided collection.
     """
     # Check if we are using a THStack
-    if is_stack(histograms_or_stack):
+    if is_histo(histograms_or_stack):
+        # Create an iterable of the single histogram
+        return (histograms_or_stack,)
+    elif is_stack(histograms_or_stack):
         if unpack_stacks:
             # Extract histograms from the stack
             result = list(histograms_or_stack.GetHists())
@@ -78,8 +89,7 @@ def histogram_iterable(histograms_or_stack,
             return result
         else:
             return (histograms_or_stack,)
-    elif isinstance(histograms_or_stack, TH1):
-        # Create an iterable of the single histogram
+    elif is_graph(histograms_or_stack):
         return (histograms_or_stack,)
 
     # Must already be an iterable
@@ -115,35 +125,45 @@ def combined_histogram(histograms_or_stack):
     return result
 
 
-def maximum_value(histograms):
-    """Returns the maximum value of all bins of all histograms provided,
-    including any errors.
+def maximum_value(drawables):
+    """Returns the maximum value of all bins of all histograms or graphs
+    provided, including any errors.
 
     Args:
-        histograms: A list of histogrammy objects, each of which may be a
-            single histogram, a THStack object, or a 2-tuple of the form
-            (TH1/THStack, TGraphAsymmErrors), where the second element is an
-            error band for the histogram.
+        drawables: An iterable of drawable objects, each of one of the
+            following types:
+
+            - A TH1 object
+            - A THStack object
+            - A tuple of the form (THStack, TGraph) where the latter
+              represents error bars
+            - A TGraph object
 
     Returns:
         The maximum value than any bin takes on in any of the provided
-        histograms.
+        drawables.
     """
     # Create our initial maximum
     result = 0.0
 
     # Loop over histograms
-    for histogram in histograms:
+    for drawable in drawables:
         # Unpack things if there is an error band
-        if isinstance(histogram, tuple):
-            histogram, error_band = histogram
+        if isinstance(drawable, tuple):
+            drawable, error_band = drawable
         else:
             error_band = None
 
-        # Compute the maximum for this histogram
-        maximum = histogram.GetMaximum()
+        # Compute the maximum for this drawable
+        if is_histo(drawable) or is_stack(drawable):
+            maximum = drawable.GetMaximum()
+        elif is_graph(drawable):
+            # http://root.cern.ch/phpBB3/viewtopic.php?t=9070
+            maximum = TMath.MaxElement(drawable.GetN(), drawable.GetY())
+        else:
+            raise ValueError('unsupported drawable type')
 
-        # NOTE: Clever math hack.  Since histogram may be a THStack, we can't
+        # NOTE: Clever math hack.  Since drawable may be a THStack, we can't
         # (easily) do a bin-wise pairing and compute (value + error-high) for
         # each bin when looking for a maximum.  However, the bin which has the
         # maximum value will also have the maximum statistical and systematic
@@ -313,7 +333,8 @@ class Plot(object):
                  y_title = None,
                  plot_header = True,
                  ratio = False,
-                 maximum_value = None):
+                 x_range = None,
+                 y_max = None):
         """Initializes a new instance of the Plot class.
 
         Args:
@@ -321,9 +342,8 @@ class Plot(object):
             plot_header: Whether or not to include whitespace at the top of the
                 plot for the ATLAS label and legend
             ratio: Whether or not to include a ratio plot
-            maximum_value: The maximum Y value for any histogram being plotted.
-                If None (the default), this value will be determined by the
-                first call to draw_histograms.
+            x_range: A tuple of (x_min, x_max)
+            y_max: The maximum Y axis value
         """
         # Store the title
         self._title = title
@@ -359,8 +379,10 @@ class Plot(object):
                                else self.PLOT_MARGINS))
         self._plot.Draw()
 
-        # Store the maximum Y value
-        self._set_maximum_value(maximum_value)
+        # Store ranges
+        self._x_range = x_range
+        if y_max is not None:
+            self._set_maximum_value(y_max)
 
         # Switch back to the context of the canvas
         self._canvas.cd()
@@ -382,9 +404,11 @@ class Plot(object):
         else:
             self._ratio_plot = None
 
-        # Set up axis tracking
-        self._plot_axes = None
-        self._ratio_plot_axes = None
+        # Track whether or not we've already drawn to the main pad
+        self._drawn = False
+
+        # Track that object which sets up the axes in the main plot
+        self._axes_object = None
 
         # Create a structure to track any histograms we generate internally
         # which need to be added to any legends created
@@ -442,114 +466,119 @@ class Plot(object):
         """Set log scale on the Y axis for this plot."""
         self._plot.SetLogy(int(log_scale))
 
-    def draw_histograms(self, *histograms):
-        """Plots a collection of histograms to the main plot pad of a plot
-        created with plot or plot_with_ratio.  All TH1 objects are drawn with
-        error bars.  THStack elements are only drawn with an error band if one
-        is provided.
+    def draw(self, *plottables):
+        """Plots a collection of plottables to the main plot pad.  All TH1
+        objects are drawn with error bars.  THStack elements are only drawn
+        with an error band if one is provided.
+
+        This method may only be called once
 
         Args:
-            histograms: Each argument of this function after plot may be a
-                single histogram, a THStack object, or a 2-tuple of the form
-                (TH1/THStack, TGraphAsymmErrors), where the second element is
-                an error band for the stack.  Elements are drawn in the order
-                that they are provided, so THStack objects should be provided
-                first.
+            plottables: Each argument of this function must be of the form
+                (object, options), where object is one of the following:
+
+                - A TH1 object
+                - A THStack object
+                - A tuple of the form (THStack, TGraph) where the latter
+                  represents error bars
+                - A TGraph object
+
+                and options is a string which will be used for the options
+                argument of the object's Draw method.  Plottables will be
+                rendered in the order provided.  Axes drawing options (e.g.
+                'a' or 'same' should not be provided and will be set
+                automatically)
         """
-        # If there are no histograms, we can bail
-        if not histograms:
-            return
+        # Make sure there are plottables
+        if len(plottables) == 0:
+            raise ValueError('must provide at least one plottable')
+
+        # Check if we've already drawn
+        if self._drawn:
+            raise RuntimeError('cannot draw twice to a plot')
+        self._drawn = True
+
+        # Extract drawables
+        drawables, _ = zip(*plottables)
 
         # Check if there is a maximum value set, and if not, set it
         if self._get_maximum_value() is None:
-            self._set_maximum_value(maximum_value(histograms))
+            self._set_maximum_value(maximum_value(drawables))
 
-        # Draw the histograms
-        map(self._draw_histogram, histograms)
+        # Move to the context of the plot pad
+        self._plot.cd()
+
+        # Iterate through and draw plottables based on type
+        first = True
+        for drawable, option in plottables:
+            # Check if this a tuple of histogram, error_band
+            if isinstance(drawable, tuple):
+                drawable, error_band = drawable
+            else:
+                error_band = None
+
+            # Make a clone of the drawable so we don't modify it
+            drawable = drawable.Clone(_rand_uuid())
+            SetOwnership(drawable, False)
+
+            # Set the maximum value of the drawable
+            # HACK: I wish this could go into _handle_axes, but apparently it
+            # can't because ROOT sucks and this has to be set on EVERY
+            # drawable, not just the one with the axes.
+            drawable.SetMaximum(self._get_maximum_value())
+
+            # Include axes if we need
+            if first:
+                if is_graph(drawable):
+                    option += 'a'
+            else:
+                option += 'same'
+            first = False
+
+            # Draw the histogram
+            drawable.Draw(option)
+
+            # Handle axes
+            self._handle_axes(drawable, option)
+
+            # If there is an error band, draw it
+            if error_band is not None:
+                self._draw_error_band(error_band)
 
         # HACK: Need to force a redraw of plot axes due to issue with ROOT:
         # http://root.cern.ch/phpBB3/viewtopic.php?f=3&t=14034
         self._plot.RedrawAxis()
 
-    def _draw_histogram(self, histogram):
-        """Draws a single histogram to the plot pad.
+    def _handle_axes(self, drawable, option):
+        """If there is no object currently registered as the owner of the axes
+        drawn on the main plot, then this will set it.
 
         Args:
-            histogram: The histogram to draw
+            drawable: The graph, histogram or stack whose axes were ALREADY
+                drawn
+            option: The option with which to draw the axes
         """
-        # Check if this is the first histogram to be drawn
-        first = self._plot_axes is None
+        # If we already have an axes object, ignore this one
+        if self._axes_object is not None:
+            return
 
-        # Check if this histogram is a tuple of (histogram, error_band)
-        if isinstance(histogram, tuple):
-            histogram, error_band = histogram
+        # Grab the histogram used for axes style/range manipulation
+        if is_stack(drawable) or is_graph(drawable):
+            axes_histogram = drawable.GetHistogram()
         else:
-            error_band = None
+            axes_histogram = drawable
 
-        # Move to the context of the plot pad
-        self._plot.cd()
+        # Grab the histogram used for title manipulation
+        if is_stack(drawable):
+            title_histogram = drawable.GetHists()[0]
+        else:
+            title_histogram = drawable
 
-        # Make a clone of the histogram so we don't modify it
-        histogram = histogram.Clone(_rand_uuid())
-        SetOwnership(histogram, False)
-
-        # If this is the first histogram, we need to set the title on it
-        if first and self._title is not None:
-            histogram.SetTitle(self._title)
-
-        # Set the maximum value of the histogram
-        histogram.SetMaximum(self._get_maximum_value())
-
-        # Draw the histogram
-        histogram.Draw(self._draw_options_for_histogram(histogram))
-
-        # If this was the first histogram, we need to do some styling on the
-        # axes and titles
-        if first:
-            self._set_and_style_plot_axes(histogram)
-
-        # If there is an error band, draw it
-        if error_band is not None:
-            self._draw_error_band(error_band)
-
-    def _draw_options_for_histogram(self, histogram):
-        """Returns options for TH1::Draw or THStack::Draw based on type and
-        whether or not axes exist.
-
-        Args:
-            histogram: The histogram object
-
-        Returns:
-            A string representing draw options.
-        """
-        # Calculate options
-        options = 'hist' if is_stack(histogram) else 'ep'
-
-        # Draw on the same axes if they already exist
-        if self._plot_axes:
-            options += 'same'
-
-        return options
-
-    def _set_and_style_plot_axes(self, histogram):
-        """Sets self._plot_axes and makes sure they are style appropriately.
-
-        Args:
-            histogram: The histogram or stack whose axes were ALREADY drawn.
-        """
-        # Check if this is a stack
-        stack = is_stack(histogram)
-
-        # Figure out which histogram to grab axes/titles from
-        # NOTE: For GetHistogram() to work, Draw must have been called on
-        # the stack, so this has been noted in the function arguments
-        axes_histogram = histogram.GetHistogram() if stack else histogram
-        title_histogram = histogram.GetHists()[0] if stack else histogram
+        # Set the plot title
+        title_histogram.SetTitle(self._title)
 
         # Grab axes
-        self._plot_axes = \
-            x_axis, y_axis = \
-            axes_histogram.GetXaxis(), axes_histogram.GetYaxis()
+        x_axis, y_axis = axes_histogram.GetXaxis(), axes_histogram.GetYaxis()
 
         # Grab titles from first histogram if not set explicitly
         if self._x_title is None:
@@ -558,6 +587,8 @@ class Plot(object):
             self._y_title = title_histogram.GetYaxis().GetTitle()
 
         # Style x-axis, or hide it if this plot has a ratio plot
+        if self._x_range is not None:
+            x_axis.SetRangeUser(*self._x_range)
         if self._ratio_plot:
             x_axis.SetLabelOffset(999)
             x_axis.SetTitleOffset(999)
@@ -567,16 +598,9 @@ class Plot(object):
             x_axis.SetTitleOffset(self.PLOT_X_AXIS_TITLE_OFFSET)
 
         # Style y-axis
-        n_bins = x_axis.GetNbins()
-        low_edge = x_axis.GetBinLowEdge(1)
-        up_edge = x_axis.GetBinUpEdge(n_bins)
-        bin_width = (up_edge - low_edge) / float(n_bins)
-        if bin_width == 1 and n_bins < 10:
-            bin_label = '1'
-        else:
-            bin_label = '{0:.1f}'.format(bin_width)
-
-        y_axis.SetTitle(self._y_title.format(bin_label))
+        if self._ratio_plot:
+            y_axis.SetLabelSize(self.PLOT_Y_AXIS_LABEL_SIZE_WITH_RATIO)
+        y_axis.SetTitle(self._y_title)
         y_axis.SetTitleSize(
             (self.PLOT_Y_AXIS_TITLE_SIZE_WITH_RATIO
              if self._ratio_plot
@@ -587,11 +611,9 @@ class Plot(object):
              if self._ratio_plot
              else self.PLOT_Y_AXIS_TITLE_OFFSET)
         )
-        if self._ratio_plot:
-            y_axis.SetLabelSize(self.PLOT_Y_AXIS_LABEL_SIZE_WITH_RATIO)
 
-        # Redraw the histogram with the new style
-        histogram.Draw(self._draw_options_for_histogram(histogram))
+        # Redraw the drawable with the new style
+        drawable.Draw(option)
 
     def _draw_error_band(self, error_band):
         """Draws an error band on top of histogram objects.
@@ -643,9 +665,9 @@ class Plot(object):
         x_axis.SetTitleSize(self.PLOT_X_AXIS_TITLE_SIZE_WITH_RATIO)
         x_axis.SetTitleOffset(self.PLOT_X_AXIS_TITLE_OFFSET_WITH_RATIO)
         x_axis.SetLabelSize(self.PLOT_X_AXIS_LABEL_SIZE_WITH_RATIO)
-        # NOTE: _x_title is set by draw_histogram if it is not set
-        # explicitly.
         x_axis.SetTitle(self._x_title)
+        if self._x_range:
+            x_axis.SetRangeUser(*self._x_range)
         y_axis.SetTitleSize(self.PLOT_RATIO_Y_AXIS_TITLE_SIZE)
         y_axis.SetLabelSize(self.PLOT_RATIO_Y_AXIS_LABEL_SIZE)
         y_axis.SetRangeUser(self.PLOT_RATIO_Y_AXIS_MINIMUM,
