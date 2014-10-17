@@ -3,7 +3,7 @@ elegant plotting.  As with anything that interfaces with ROOT, there are bound
 to be... idiosyncrasies, though this module does its best to hide them.  It
 provides several functions for manipulating histograms or collections thereof:
 
-    - histogram_iterable
+    - drawable_iterable
     - combined_histogram
     - maximum_value
     - ratio_histogram
@@ -58,15 +58,12 @@ is_graph = lambda g: isinstance(g, TGraph)
 is_line = lambda l: isinstance(l, TLine)
 
 
-def histogram_iterable(histograms_or_stack,
-                       unpack_stacks = False,
-                       reverse_stacks = False):
-    """Convenience method to get an iterable object from a collection of
-    histogram (TH1) objects.
+def drawable_iterable(drawable, unpack_stacks = False, reverse_stacks = False):
+    """Convenience method to get an iterable object from a drawable.
 
     Args:
-        histograms_or_stack: A single histogram, an iterable of histograms, or
-            a THStack object which represents the collection of histograms
+        drawable: Some type of drawable object.  Existing iterables are passed
+            through.
         unpack_stacks: By default, THStack objects are treated as a single
             histogram.  If you would like them to be treated as a collection of
             their constituent TH1 objects, set unpack_stacks = True.
@@ -78,28 +75,20 @@ def histogram_iterable(histograms_or_stack,
         An iterable of the histograms in the provided collection.
     """
     # Check if we are using a THStack
-    if is_histo(histograms_or_stack):
-        # Create an iterable of the single histogram
-        return (histograms_or_stack,)
-    elif is_stack(histograms_or_stack):
-        if unpack_stacks:
-            # Extract histograms from the stack
-            result = list(histograms_or_stack.GetHists())
+    if is_stack(drawable) and unpack_stacks:
+        # Extract histograms from the stack
+        result = list(drawable.GetHists())
 
-            # Reverse if necessary
-            if reverse_stacks:
-                result.reverse()
+        # Reverse if necessary
+        if reverse_stacks:
+            result.reverse()
 
-            return result
-        else:
-            return (histograms_or_stack,)
-    elif is_graph(histograms_or_stack):
-        return (histograms_or_stack,)
-    elif is_line(histograms_or_stack):
-        return (histograms_or_stack,)
+        return result
+    elif is_histo(drawable) or is_graph(drawable) or is_line(drawable):
+        return (drawable,)
 
-    # Must already be an iterable
-    return histograms_or_stack
+    # Already an iterable
+    return drawable
 
 
 def combined_histogram(histograms_or_stack):
@@ -116,7 +105,7 @@ def combined_histogram(histograms_or_stack):
         and which has bin errors calculated.
     """
     # Convert the histograms to an iterable, always unpacking THStack objects
-    histograms = histogram_iterable(histograms_or_stack, True)
+    histograms = drawable_iterable(histograms_or_stack, True)
 
     # Grab the first histogram, making sure bin errors are calculated before
     # adding the remaining histograms
@@ -252,7 +241,7 @@ def histogram_stack(*histograms):
         An initialized THStack object containing the specified histograms.
     """
     # Generate an iterable of all histograms provided
-    histograms = chain(*(histogram_iterable(h, unpack_stacks = True)
+    histograms = chain(*(drawable_iterable(h, unpack_stacks = True)
                          for h
                          in histograms))
 
@@ -302,8 +291,8 @@ class Plot(object):
     PLOT_X_AXIS_LABEL_SIZE_WITH_RATIO = 0.12
     PLOT_Y_AXIS_TITLE_SIZE = PLOT_X_AXIS_TITLE_SIZE
     PLOT_Y_AXIS_TITLE_SIZE_WITH_RATIO = 0.06
-    PLOT_Y_AXIS_TITLE_OFFSET = 1.4
-    PLOT_Y_AXIS_TITLE_OFSET_WITH_RATIO = 1.05
+    PLOT_Y_AXIS_TITLE_OFFSET = 1.0
+    PLOT_Y_AXIS_TITLE_OFSET_WITH_RATIO = 0.75
     PLOT_Y_AXIS_LABEL_SIZE_WITH_RATIO = 0.05
     PLOT_RATIO_Y_AXIS_TITLE_SIZE = 0.12
     PLOT_RATIO_Y_AXIS_LABEL_SIZE = 0.12
@@ -874,7 +863,7 @@ class Plot(object):
         # Create a chained list of all histograms.  We decompose THStack
         # objects in reverse order, i.e. top-to-bottom.
         histograms = \
-            list(chain(*(histogram_iterable(h, True, True)
+            list(chain(*(drawable_iterable(h, True, True)
                          for h
                          in histograms)))
 
