@@ -54,6 +54,10 @@ is_stack = lambda h: isinstance(h, THStack)
 is_graph = lambda g: isinstance(g, TGraph)
 
 
+# Convenience function to check if an object is a TLine
+is_line = lambda l: isinstance(l, TLine)
+
+
 def histogram_iterable(histograms_or_stack,
                        unpack_stacks = False,
                        reverse_stacks = False):
@@ -90,6 +94,8 @@ def histogram_iterable(histograms_or_stack,
         else:
             return (histograms_or_stack,)
     elif is_graph(histograms_or_stack):
+        return (histograms_or_stack,)
+    elif is_line(histograms_or_stack):
         return (histograms_or_stack,)
 
     # Must already be an iterable
@@ -160,6 +166,8 @@ def maximum_value(drawables):
         elif is_graph(drawable):
             # http://root.cern.ch/phpBB3/viewtopic.php?t=9070
             maximum = TMath.MaxElement(drawable.GetN(), drawable.GetY())
+        elif is_line(drawable):
+            maximum = max(drawable.GetY1(), drawable.GetY2())
         else:
             raise ValueError('unsupported drawable type')
 
@@ -407,6 +415,9 @@ class Plot(object):
         # Track whether or not we've already drawn to the main pad
         self._drawn = False
 
+        # Track whether or not we've already drawn to the ratio pad
+        self._ratio_drawn = False
+
         # Track that object which sets up the axes in the main plot
         self._axes_object = None
 
@@ -466,7 +477,7 @@ class Plot(object):
         """Set log scale on the Y axis for this plot."""
         self._plot.SetLogy(int(log_scale))
 
-    def draw(self, *plottables):
+    def draw(self, *drawables_options):
         """Plots a collection of plottables to the main plot pad.  All TH1
         objects are drawn with error bars.  THStack elements are only drawn
         with an error band if one is provided.
@@ -474,23 +485,24 @@ class Plot(object):
         This method may only be called once
 
         Args:
-            plottables: Each argument of this function must be of the form
-                (object, options), where object is one of the following:
+            drawables_options: Each argument of this function must be of the
+                form (object, options), where object is one of the following:
 
                 - A TH1 object
                 - A THStack object
                 - A tuple of the form (THStack, TGraph) where the latter
                   represents error bars
                 - A TGraph object
+                - A TLine object
 
                 and options is a string which will be used for the options
                 argument of the object's Draw method.  Plottables will be
                 rendered in the order provided.  Axes drawing options (e.g.
                 'a' or 'same' should not be provided and will be set
-                automatically)
+                automatically).  A TLine may not be the first drawable element.
         """
-        # Make sure there are plottables
-        if len(plottables) == 0:
+        # Make sure there are drawables
+        if len(drawables_options) == 0:
             raise ValueError('must provide at least one plottable')
 
         # Check if we've already drawn
@@ -499,7 +511,7 @@ class Plot(object):
         self._drawn = True
 
         # Extract drawables
-        drawables, _ = zip(*plottables)
+        drawables, _ = zip(*drawables_options)
 
         # Check if there is a maximum value set, and if not, set it
         if self._get_maximum_value() is None:
@@ -508,9 +520,9 @@ class Plot(object):
         # Move to the context of the plot pad
         self._plot.cd()
 
-        # Iterate through and draw plottables based on type
+        # Iterate through and draw drawables based on type
         first = True
-        for drawable, option in plottables:
+        for drawable, option in drawables_options:
             # Check if this a tuple of histogram, error_band
             if isinstance(drawable, tuple):
                 drawable, error_band = drawable
@@ -521,14 +533,17 @@ class Plot(object):
             drawable = drawable.Clone(_rand_uuid())
             SetOwnership(drawable, False)
 
-            # Set the maximum value of the drawable
+            # Set the maximum value of the drawable if supported
             # HACK: I wish this could go into _handle_axes, but apparently it
             # can't because ROOT sucks and this has to be set on EVERY
             # drawable, not just the one with the axes.
-            drawable.SetMaximum(self._get_maximum_value())
+            if not is_line(drawable):
+                drawable.SetMaximum(self._get_maximum_value())
 
             # Include axes if we need
             if first:
+                if is_line(drawable):
+                    raise ValueError('TLine may not be first drawable')
                 if is_graph(drawable):
                     option += 'a'
             else:
@@ -539,7 +554,8 @@ class Plot(object):
             drawable.Draw(option)
 
             # Handle axes
-            self._handle_axes(drawable, option)
+            if not is_line(drawable):
+                self._handle_axes(drawable, option)
 
             # If there is an error band, draw it
             if error_band is not None:
@@ -653,6 +669,11 @@ class Plot(object):
         explicitly. draw_ratio_histogram should therefore be called after
         draw_histogram.
         """
+        # Check if we've already drawn
+        if self._ratio_drawn:
+            raise RuntimeError('cannot draw twice to a plot')
+        self._ratio_drawn = True
+
         # Switch to the context of the ratio pad
         self._ratio_plot.cd()
 
