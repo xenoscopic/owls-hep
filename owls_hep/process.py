@@ -73,8 +73,8 @@ class Patch(object):
     def __call__(self, data):
         """Applies the patch to a DataFrame.
 
-        The provided DataFrame will be a copy which can be freely mutated.
-        This method should return its input.
+        The provided DataFrame may be mutated in-place, as it will not be
+        re-used.  In any event, the patched DataFrame should be returned.
 
         Implementers must override this method.
 
@@ -82,7 +82,7 @@ class Patch(object):
             data: The DataFrame to patch
 
         Returns:
-            The modified DataFrame.
+            The patched DataFrame.
         """
         raise NotImplementedError('abstract method')
 

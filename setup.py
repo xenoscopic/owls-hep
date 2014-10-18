@@ -25,8 +25,6 @@ setup(
         'pandas >= 0.14.0',
         'six >= 1.7.3',
         'root_numpy >= 3.3.1',
-        'rootpy >= 0.7.1',
-        'owls-config >= 0.0.1',
         'owls-cache >= 0.0.1',
         'owls-parallel >= 0.0.1',
     ],

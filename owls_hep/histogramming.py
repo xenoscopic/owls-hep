@@ -13,7 +13,7 @@ from six import string_types
 # NumPy imports
 import numpy
 
-# rootpy imports
+# ROOT imports
 from ROOT import TH1F, TH2F, TH3F
 
 # owls-cache imports
@@ -391,7 +391,7 @@ class Histogram(Calculation):
             region: The region providing selection/weighting for the histogram
 
         Returns:
-            A rootpy histogram representing the resultant distribution.
+            A ROOT histogram representing the resultant distribution.
         """
         # Compute the histogram
         result = _histogram(process, region, self._distribution)
