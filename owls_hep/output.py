@@ -64,8 +64,10 @@ def output_redirected(to = os.devnull):
         sys.stderr = os.fdopen(stderr_fd, 'w')
 
     # Do the redirection
+    # HACK: This with indentation is ugly, but PEP-8 likes it...
+    # https://github.com/jcrocholl/pep8/issues/316
     with os.fdopen(os.dup(stdout_fd), 'w') as old_stdout, \
-         os.fdopen(os.dup(stderr_fd), 'w') as old_stderr:
+            os.fdopen(os.dup(stderr_fd), 'w') as old_stderr:
         with open(to, 'w') as to_file:
             _redirect_output(to_file, to_file)
         try:
