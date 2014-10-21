@@ -48,7 +48,7 @@ class Uncertainty(Calculation):
         Args:
             calculation: The base calculation, which should return either a
                 count or a histogram.  This will be accessible via the
-                calculation member function.
+                `calculation` member function.
         """
         # Store the calculation
         self._calculation = calculation
@@ -141,7 +141,7 @@ class StatisticalUncertainty(Uncertainty):
         return result
 
 
-def _sum_quadrature(values):
+def sum_quadrature(values):
     """Adds values in quadrature.
 
     Args:
@@ -151,6 +151,30 @@ def _sum_quadrature(values):
         The sum of values in quadrature
     """
     return sqrt(sum((x ** 2 for x in values)))
+
+
+def to_overall(shape, nominal):
+    """Converts a shape variation to an overall variation.
+
+    Args:
+        shape: The varied histogram
+        nominal: The nominal histogram - should have the same bining as shape
+
+    Returns:
+        The ratio of shape.Integral()/nominal.Integral(), or 0.0 if nominal has
+        0 integral.
+    """
+    # Compute integrals
+    shape_integral = shape.Integral()
+    nominal_integral = nominal.Integral()
+
+    # Watch out for divide by 0
+    # TODO: Is this the correct treatment?
+    if nominal_integral == 0.0:
+        return 0.0
+
+    # Compute
+    return shape_integral / nominal_integral
 
 
 class UncertaintyCount(Calculation):
@@ -205,8 +229,8 @@ class UncertaintyCount(Calculation):
             down_variations.append(abs((shape_down / nominal) - 1.0))
 
         # Combine variations in quadrature
-        return (_sum_quadrature(up_variations) * nominal,
-                _sum_quadrature(down_variations) * nominal)
+        return (sum_quadrature(up_variations) * nominal,
+                sum_quadrature(down_variations) * nominal)
 
 
 def combine_count_uncertainties(count_uncertainties):
@@ -219,8 +243,8 @@ def combine_count_uncertainties(count_uncertainties):
         A tuple of the form (upper_expectation, lower_expectation).
     """
     return (
-        _sum_quadrature((u[0] for u in count_uncertainties)),
-        _sum_quadrature((u[1] for u in count_uncertainties)),
+        sum_quadrature((u[0] for u in count_uncertainties)),
+        sum_quadrature((u[1] for u in count_uncertainties)),
     )
 
 
@@ -307,9 +331,9 @@ class UncertaintyBand(Calculation):
             # Set the point and error
             band.SetPoint(point, band.GetX()[point], content)
             band.SetPointEYhigh(point,
-                                _sum_quadrature(up_variations) * content)
+                                sum_quadrature(up_variations) * content)
             band.SetPointEYlow(point,
-                               _sum_quadrature(down_variations) * content)
+                               sum_quadrature(down_variations) * content)
 
         # All done
         return band
@@ -353,12 +377,12 @@ def combine_uncertainty_bands(bands, sum_values, title = 'Uncertainty'):
                             sum(b.GetY()[i] for b in bands))
 
         # Set the high error
-        result.SetPointEYhigh(i, _sum_quadrature((b.GetErrorYhigh(i)
+        result.SetPointEYhigh(i, sum_quadrature((b.GetErrorYhigh(i)
                                                   for b
                                                   in bands)))
 
         # Set the low error
-        result.SetPointEYlow(i, _sum_quadrature((b.GetErrorYlow(i)
+        result.SetPointEYlow(i, sum_quadrature((b.GetErrorYlow(i)
                                                  for b
                                                  in bands)))
 
