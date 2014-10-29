@@ -30,152 +30,109 @@ from owls_hep.calculation import Calculation
 
 # Set up default exports
 __all__ = [
-    'Distribution',
+    'Binning',
     'Histogram',
 ]
 
 
-class Distribution(object):
-    """Represents a histogrammable distribution.
+class Binning(object):
+    """Represents a binning to be used on an axis in a histogram.
     """
 
-    def __init__(self,
-                 name,
-                 expressions,
-                 binnings,
-                 x_label = None,
-                 y_label = None):
-        """Initializes a new instance of the Distribution class.
+    def __init__(self, type, *args):
+        """Initializes a new instance of the Binning class.
 
         Args:
-            name: A name by which to refer to the histogram
-            expressions: The expression (as a string or 1-tuple of a string) or
-                expressions (as an N-tuple of strings), in terms of dataset
-                variables, to histogram.  The multiplicity of expressions
-                determines the dimensionality of the histogram.  Each
-                expression must be a string evaluable using
-                owls.data.evaluation.evaluate.
-            binnings: The binning (as a binning or 1-tuple of a binning) or
-                binnings (as an N-tuple of binnings) to use for the axix/axes
-                of the histogram.  The multiplicity of binnings must match that
-                of expressions.  Each binning must be a tuple of one of two
-                forms:
+            type: The binning type, either 'fixed' or 'variable'
+            *args: The remaining arguments depend on the binning type.  For
+                'fixed'-width bins, the remaining arguments should be of the
+                form:
 
-                    ('fixed', low_bin_left_edge, high_bin_right_edge, n_bins)
+                    low_bin_left_edge, high_bin_right_edge, n_bins
 
-                or
+                For 'variable'-width bins, the remaining arguments should be of
+                the form:
 
-                    ('variable',
-                     low_bin_left_edge,
-                     second_bin_left_edge,
-                     ...,
-                     high_bin_right_edge)
-
-                If passing a single string (outside of a tuple) for
-                expressions, then binnings must be a single binning object
-                outside of a tuple.
-            x_label: The ROOT TLatex label to use for the x-axis
-            y_label: The ROOT TLatex label to use for the y-axis
+                    low_bin_left_edge,
+                    second_bin_left_edge,
+                    ...,
+                    high_bin_right_edge
         """
-        # Store parameters
-        self._name = name
-        self._x_label = x_label
-        self._y_label = y_label
+        # Validate and store type
+        if type not in ('fixed', 'variable'):
+            raise ValueError('invalid binning type')
+        self._type = type
 
-        # Normalize expressions and binnings by converting them to tuples if
-        # they are single elements.  We don't check the type of binnings, since
-        # it will always be some manner of tuple, and the docstrings state it
-        # must be a single element if expressions is a single element.
-        if isinstance(expressions, string_types):
-            self._expressions = (expressions,)
-            self._binnings = (binnings,)
-        else:
-            self._expressions = expressions
-            self._binnings = binnings
+        # Validate and store edge specifications
+        self._low_bin_left_edge = None
+        self._high_bin_right_edge = None
+        self._n_bins = None
+        self._edges = None
+        if self._type == 'fixed':
+            # Parse
+            low_bin_left_edge, high_bin_right_edge, n_bins = args
 
-        # Validate that expression and binning counts jive
-        if len(self._expressions) != len(self._binnings):
-            raise ValueError('histogram bin specifications must have the same '
-                             'length as expression specifications')
+            # Validate
+            if n_bins < 1:
+                raise ValueError('must have at least one bin')
+            if low_bin_left_edge >= high_bin_right_edge:
+                raise ValueError('lower edge must be higher than upper edge')
+
+            # Store
+            self._low_bin_left_edge = low_bin_left_edge
+            self._high_bin_right_edge = high_bin_right_edge
+            self._n_bins = n_bins
+        elif self._type == 'variable':
+            # Parse
+            edges = args
+
+            # Validate
+            if len(edges) < 2:
+                raise ValueError('must have at least two edges')
+            if not all(x < y for x, y in zip(edges, edges[1:])):
+                raise ValueError('edges must be strictly increasing')
+
+            # Store
+            self._edges = edges
 
     def __hash__(self):
-        """Returns a hash of those quantities affecting the resultant
-        computation.
+        """Returns a unique hash for the binning.
+
+        The hash is based on the specifications provided to the constructor, so
+        equivalent binnings may have different hashes.
         """
-        # TODO: Do we really need x-label/y-label here?
-        return hash((self._expressions,
-                     self._binnings,
-                     self._x_label,
-                     self._y_label))
+        # HACK: hash(None) is not consistent across Python processes because
+        # None is a singleton and its address varies between runs.  I wish I
+        # were making this up.  Anyway, we would normally just do a dumb tuple
+        # including self._* parameters which are None, but I guess we can't.
+        if self._type == 'fixed':
+            return hash((self._type,
+                         self._low_bin_left_edge,
+                         self._high_bin_right_edge,
+                         self._n_bins))
+        elif self._type == 'variable':
+            return hash((self._type, self._edges))
 
-    def name(self):
-        """Returns the name for this distribution.
+    def edges(self):
+        """Returns an explicit NumPy array of doubles representing bin edges.
         """
-        return self._name
-
-    def expressions(self):
-        """Returns the expressions for this distribution.
-        """
-        return self._expressions
-
-    @staticmethod
-    def _expand_binning(binning):
-        """Expands a fixed or variable-width binning specification.
-
-        Args:
-            binning: The binning specification to expand
-
-        Returns:
-            A NumPy array of the bin edges.
-        """
-        # Check that the basic format of the specification is correct
-        if not isinstance(binning, tuple) or len(binning) < 1:
-            raise ValueError('invalid bin specification value')
-
-        # Handle based on binning type
-        if binning[0] == 'fixed':
-            # Check length of tuples, making sure it will generate at least 2
-            # edges (we add 1 below)
-            if len(binning) != 4 or binning[3] < 1:
-                raise ValueError('invalid fixed-width bin specification')
-
-            # Expand them to full edge lists, adding 1 to the bin count so that
-            # at least 2 edges are generated.  Unfortunately there is no way to
+        if self._type == 'fixed':
+            # Expand to a full edge list, adding 1 to the bin count so that at
+            # least 2 edges are generated.  Unfortunately there is no way to
             # specify a dtype to linspace, but the implementation is hard-coded
             # to return a float, so we'll go with it.
-            return numpy.linspace(binning[1], binning[2], binning[3] + 1)
-        elif binning[0] == 'variable':
-            # Check length of edge lists (need at least 2 edges in addition to
-            # type specification)
-            if len(binning) < 3:
-                raise ValueError('invalid variable-width bin specification')
-
-            # Take existing edge lists as they come, but ensure they are
-            # typed as float
-            return numpy.array(binning[1:], dtype = numpy.float)
-        else:
-            raise ValueError('invalid bin specification type')
-
-    def binnings(self):
-        """Returns the expanded binnings for this distribution.
-        """
-        return tuple((Distribution._expand_binning(b) for b in self._binnings))
-
-    def x_label(self):
-        """Returns the x-axis label for this distribution.
-        """
-        return self._x_label
-
-    def y_label(self):
-        """Returns the y-axis label for this distribution.
-        """
-        return self._y_label
+            return numpy.linspace(self._low_bin_left_edge,
+                                  self._high_bin_right_edge,
+                                  self._n_bins + 1)
+        elif self._type == 'variable':
+            # Use existing edges, but ensure they are type as float
+            return numpy.array(self._edges, dtype = numpy.float)
 
 
 # Dummy function to return fake values when parallelizing
-def _parallel_mocker(process, region, distribution):
+def _parallel_mocker(process, region, expressions, binnings):
     # Extract binnings
-    binnings = distribution.binnings()
+    edges = tuple((b.edges() for b in binnings))
 
     # Create a unique name and title for the histogram
     name = title = uuid4().hex
@@ -185,34 +142,34 @@ def _parallel_mocker(process, region, distribution):
     # argument, you are passing an nbins argument, which is length - 1, hence
     # the code below.  If you pass length for n bins, then you'll get garbage
     # for the last bin's upper edge and things go nuts in ROOT.
-    dimensionality = len(binnings)
+    dimensionality = len(edges)
     if dimensionality == 1:
         return TH1F(name, title,
-                    len(binnings[0]) - 1, binnings[0])
+                    len(edges[0]) - 1, edges[0])
     elif dimensionality == 2:
         return TH2F(name, title,
-                    len(binnings[0]) - 1, binnings[0],
-                    len(binnings[1]) - 1, binnings[1])
+                    len(edges[0]) - 1, edges[0],
+                    len(edges[1]) - 1, edges[1])
     elif dimensionality == 3:
         return TH3F(name, title,
-                    len(binnings[0]) - 1, binnings[0],
-                    len(binnings[1]) - 1, binnings[1],
-                    len(binnings[2]) - 1, binnings[2])
+                    len(edges[0]) - 1, edges[0],
+                    len(edges[1]) - 1, edges[1],
+                    len(edges[2]) - 1, edges[2])
     else:
         raise ValueError('ROOT can only histograms 1 - 3 dimensions')
 
 
 # Histogram parallelization mapper.  We map/group based on process to maximize
 # data loading caching.
-def _parallel_mapper(process, region, distribution):
+def _parallel_mapper(process, region, expressions, binnings):
     return (process,)
 
 
 # Histogram argument converter which can take *args, **kwargs and convert them
 # to *args.  No other way to do this correctly and simply than having a
 # function with the proper names.
-def _parallel_extractor(process, region, distribution):
-    return (process, region, distribution)
+def _parallel_extractor(process, region, expressions, binnings):
+    return (process, region, expressions, binnings)
 
 
 # Caching loader to be able to share data across histogram calls without
@@ -228,7 +185,7 @@ def _parallel_batcher(function, args_kwargs):
     all_properties = set()
     for args, kwargs in args_kwargs:
         # Extract region and expressions
-        _, region, distribution = _parallel_extractor(*args, **kwargs)
+        _, region, expressions, _ = _parallel_extractor(*args, **kwargs)
 
         # Add region properties
         selection, weight = region.selection_weight()
@@ -236,11 +193,7 @@ def _parallel_batcher(function, args_kwargs):
         all_properties.update(properties(weight))
 
         # Add expression properties
-        expressions = distribution.expressions()
-        if isinstance(expressions, string_types):
-            all_properties.update(properties(expressions))
-        else:
-            all_properties.update(*(properties(e) for e in expressions))
+        all_properties.update(*(properties(e) for e in expressions))
 
     # Go through all args/kwargs pairs and call the function
     for args, kwargs in args_kwargs:
@@ -253,18 +206,20 @@ def _parallel_batcher(function, args_kwargs):
 
 
 # Histogram persistent cache mapper
-def _cache_mapper(process, region, distribution, load_hints = None):
-    return (process, region, distribution)
+def _cache_mapper(process, region, expressions, binnings, load_hints = None):
+    return (process, region, expressions, binnings)
 
 
 @parallelized(_parallel_mocker, _parallel_mapper, _parallel_batcher)
-@persistently_cached('owls_hep.histogramming.histogram', _cache_mapper)
-def _histogram(process, region, distribution, load_hints = None):
+@persistently_cached('owls_hep.histogramming._histogram', _cache_mapper)
+def _histogram(process, region, expressions, binnings, load_hints = None):
     """Generates a ROOT histogram of a distribution a process in a region.
 
     Args:
         process: The process whose events should be histogrammed
         region: The region whose weighting/selection should be applied
+        expressions: A tuple of expression strings
+        binnings: A tuple of Binning instances
         distribution: The distribution to histogram
         load_hints: If provided, this argument will hint to _histogram that it
             should load additional properties when loading data and that it
@@ -279,9 +234,8 @@ def _histogram(process, region, distribution, load_hints = None):
     # Compute weighted selection
     selection, weight = region.selection_weight()
 
-    # Extract expressions and binnings
-    expressions = distribution.expressions()
-    binnings = distribution.binnings()
+    # Expand binnings to edge lists
+    edges = tuple((b.edges() for b in binnings))
 
     # Compute required data properties
     required_properties = load_hints if load_hints is not None else set()
@@ -291,10 +245,7 @@ def _histogram(process, region, distribution, load_hints = None):
     required_properties.update(properties(weight))
 
     # Add in those properties necessary to evaluate expressions
-    if isinstance(expressions, string_types):
-        required_properties.update(properties(expressions))
-    else:
-        required_properties.update(*(properties(e) for e in expressions))
+    required_properties.update(*(properties(e) for e in expressions))
 
     # Load data, using the _caching_loader if load_hints have been provided
     if load_hints is not None:
@@ -333,7 +284,7 @@ def _histogram(process, region, distribution, load_hints = None):
     if dimensionality == 1:
         # Create a one-dimensional histogram
         result = TH1F(name, title,
-                      len(binnings[0]) - 1, binnings[0])
+                      len(edges[0]) - 1, edges[0])
 
         # Fill the histogram
         # HACK: TH1::FillN will die if N == 0
@@ -342,8 +293,8 @@ def _histogram(process, region, distribution, load_hints = None):
     elif dimensionality == 2:
         # Create a two-dimensional histogram
         result = TH2F(name, title,
-                      len(binnings[0]) - 1, binnings[0],
-                      len(binnings[1]) - 1, binnings[1])
+                      len(edges[0]) - 1, edges[0],
+                      len(edges[1]) - 1, edges[1])
 
         # Fill the histogram
         # HACK: TH1::FillN will die if N == 0
@@ -352,9 +303,9 @@ def _histogram(process, region, distribution, load_hints = None):
     elif dimensionality == 3:
         # Create a three-dimensional histogram
         result = TH3F(name, title,
-                      len(binnings[0]) - 1, binnings[0],
-                      len(binnings[1]) - 1, binnings[1],
-                      len(binnings[2]) - 1, binnings[2])
+                      len(edges[0]) - 1, edges[0],
+                      len(edges[1]) - 1, edges[1],
+                      len(edges[2]) - 1, edges[2])
 
         # HACK: TH3 doesn't have a FillN method, so we have to do things the
         # slow way.
@@ -369,18 +320,65 @@ def _histogram(process, region, distribution, load_hints = None):
 
 
 class Histogram(Calculation):
-    """A histogramming calculation.
+    """A histogramming calculation which generates a ROOT THN histogram.
     """
 
-    def __init__(self, distribution):
-        """Initializes a new instance of the histogramming calculation.
+    def __init__(self, name, expressions, binnings, title, x_label, y_label):
+        """Initializes a new instance of the Histogram calculation.
 
         Args:
-            distribution: The distribution which the calculation should
-                generate when evaluated
+            name: A user and computer friendly name by which to refer to the
+                histogram
+            expressions: The expression (as a string or 1-tuple of a string) or
+                expressions (as an N-tuple of strings), in terms of dataset
+                variables, to histogram.  The multiplicity of expressions
+                determines the dimensionality of the histogram.
+            binnings: The binning (as a Binning or 1-tuple of a Binning) or
+                binnings (as an N-tuple of Binning instances), to use for
+                histogramming. The binning count must match the expression
+                count.
+            title: The ROOT TLatex label to use for the histogram title
+            x_label: The ROOT TLatex label to use for the x-axis
+            y_label: The ROOT TLatex label to use for the y-axis
         """
-        # Store the distribution
-        self._distribution = distribution
+        # Store parameters
+        self._name = name
+        if isinstance(expressions, string_types):
+            self._expressions = (expressions,)
+        else:
+            self._expressions = expressions
+        if isinstance(binnings, Binning):
+            self._binnings = (binnings,)
+        else:
+            self._binnings = binnings
+        self._title = title
+        self._x_label = x_label
+        self._y_label = y_label
+
+        # Validate that expression and binning counts jive
+        if len(self._expressions) != len(self._binnings):
+            raise ValueError('histogram bin specifications must have the same '
+                             'length as expression specifications')
+
+    def name(self):
+        """Returns the name for this histogram calculation.
+        """
+        return self._name
+
+    def title(self):
+        """Returns the title for this histogram calculation.
+        """
+        return self._title
+
+    def x_label(self):
+        """Returns the x-axis label for this histogram calculation.
+        """
+        return self._x_label
+
+    def y_label(self):
+        """Returns the y-axis label for this histogram calculation.
+        """
+        return self._y_label
 
     def __call__(self, process, region):
         """Histograms weighted events passing a region's selection into a
@@ -394,7 +392,12 @@ class Histogram(Calculation):
             A ROOT histogram representing the resultant distribution.
         """
         # Compute the histogram
-        result = _histogram(process, region, self._distribution)
+        result = _histogram(process, region, self._expressions, self._binnings)
+
+        # Set labels
+        result.SetTitle(self._title)
+        result.GetXaxis().SetTitle(self._x_label)
+        result.GetYaxis().SetTitle(self._y_label)
 
         # Style the histogram
         process.style(result)
