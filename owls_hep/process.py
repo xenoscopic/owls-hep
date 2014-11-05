@@ -66,9 +66,13 @@ class Patch(object):
         """Returns a Python set of properties of the data required to evaluate
         the patch.
 
-        Implementers must override this method.
+        Implementers must override this method if they require any properties
+        to be loaded, as the default implementation returns an empty set.
+
+        Returns:
+            A Python set containing strings of the required patch properties.
         """
-        raise NotImplementedError('abstract method')
+        return set()
 
     def __call__(self, data):
         """Applies the patch to a DataFrame.

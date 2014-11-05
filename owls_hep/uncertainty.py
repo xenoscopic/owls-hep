@@ -378,13 +378,13 @@ def combine_uncertainty_bands(bands, sum_values, title = 'Uncertainty'):
 
         # Set the high error
         result.SetPointEYhigh(i, sum_quadrature((b.GetErrorYhigh(i)
-                                                  for b
-                                                  in bands)))
+                                                 for b
+                                                 in bands)))
 
         # Set the low error
         result.SetPointEYlow(i, sum_quadrature((b.GetErrorYlow(i)
-                                                 for b
-                                                 in bands)))
+                                                for b
+                                                in bands)))
 
     # All done
     return result
