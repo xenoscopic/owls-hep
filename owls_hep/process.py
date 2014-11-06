@@ -156,7 +156,8 @@ class Process(object):
 
         Args:
             properties: A Python set of property names (TTree branch names) to
-                load
+                load.  'tree_weight' may be included, just for convenience, it
+                will not be treated as a branch name.
 
         Returns:
             A Pandas DataFrame containing the specified properties for the
