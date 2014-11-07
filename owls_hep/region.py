@@ -3,6 +3,7 @@
 
 
 # System imports
+from inspect import getsource
 import re
 from copy import deepcopy
 
@@ -27,16 +28,11 @@ class Variation(object):
 
         This method should not be overridden.
         """
-        # Grab the variation type
-        variation_type = type(self)
-
-        # Extract hashable components
-        module = variation_type.__module__
-        name = variation_type.__name__
-        state = self.state()
-
-        # Create a unique hash
-        return hash((module, name, state))
+        # HACK: Use the implementation of the variation in the hash, because
+        # the behavior of the variation is what should determine hash equality,
+        # and it's impossible to determine solely on type if the implementation
+        # changes.
+        return hash((self.state(), getsource(self.__call__)))
 
     def state(self):
         """Returns a representation of the variation's internal state, if any.

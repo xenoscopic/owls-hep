@@ -4,6 +4,7 @@
 
 # System imports
 import warnings
+from inspect import getsource
 from copy import deepcopy
 
 # Six imports
@@ -36,16 +37,10 @@ class Patch(object):
 
         This method should not be overridden.
         """
-        # Grab the patch type
-        patch_type = type(self)
-
-        # Extract hashable components
-        module = patch_type.__module__
-        name = patch_type.__name__
-        state = self.state()
-
-        # Create a unique hash
-        return hash((module, name, state))
+        # HACK: Use the implementation of the patch in the hash, because the
+        # behavior of the patchis what should determine hash equality, and it's
+        # impossible to determine solely on type if the implementation changes.
+        return hash((self.state(), getsource(self.__call__)))
 
     def state(self):
         """Returns a representation of the patch's internal state, if any.
