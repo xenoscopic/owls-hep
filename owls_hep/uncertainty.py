@@ -182,7 +182,7 @@ class UncertaintyCount(Calculation):
     """
 
     def __init__(self, calculation, uncertainty):
-        """Initializes a new instance of the UncertaintyBand class.
+        """Initializes a new instance of the UncertaintyCount class.
 
         Args:
             calculation: The base calculation, whose result should be a
