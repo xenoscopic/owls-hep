@@ -45,6 +45,9 @@ def _count(process, region):
 
 class Count(Calculation):
     """A counting calculation.
+
+    Although the need should not generally arise to subclass Count, all
+    subclasses must return a floating point value for their result.
     """
 
     def __call__(self, process, region):

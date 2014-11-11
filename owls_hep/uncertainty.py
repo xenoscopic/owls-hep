@@ -13,7 +13,9 @@ from six.moves import range
 from ROOT import TH1, TGraphAsymmErrors
 
 # owls-hep imports
-from owls_hep.calculation import Calculation
+from owls_hep.calculation import HigherOrderCalculation
+from owls_hep.counting import Count
+from owls_hep.histogramming import Histogram
 
 
 # Set up default exports
@@ -28,8 +30,11 @@ __all__ = [
 ]
 
 
-class Uncertainty(Calculation):
+class Uncertainty(HigherOrderCalculation):
     """Abstract base class for all uncertainties.
+
+    All Uncertainty implementations should accept either a floating-point count
+    or ROOT THN subclass as the result of their underlying calculation.
 
     All uncertainty calculations should return a tuple of the form:
 
@@ -38,58 +43,15 @@ class Uncertainty(Calculation):
     Overall uncertainty tuple elements should be numbers.  Shape uncertainty
     tuple elements should be the type of the underlying calculation - either a
     count or a histogram.
+
+    All uncertainty calculations should return the same type as their
+    underlying calculation.
     """
-
-    def __init__(self, calculation):
-        """Initializes a new instance of the Uncertainty class.
-
-        Subclasses should call this method.
-
-        Args:
-            calculation: The base calculation, which should return either a
-                count or a histogram.  This will be accessible via the
-                `calculation` member function.
-        """
-        # Store the calculation
-        self._calculation = calculation
 
     def name(self):
         """Returns the name of the uncertainty.
 
         Implementers must override this method.
-        """
-        raise NotImplementedError('abstract method')
-
-    def calculation(self, process, region):
-        """Executes the underlying calculation, for use by subclasses.
-
-        Args:
-            process: The process to consider
-            region: The region to consider
-
-        Returns:
-            The result of the underlying calculation.
-        """
-        return self._calculation(process, region)
-
-    def __call__(self, process, region):
-        """Calculates the uncertainty.
-
-        Implementers must override this method.
-
-        Args:
-            process: The process to consider
-            region: The region to consider
-
-        Returns:
-            A tuple of the form:
-
-            (overall_up, overall_down, shape_up, shape_down)
-
-        Overall uncertainty tuple elements should be numbers.  Shape
-        uncertainty tuple elements should be the type of the underlying
-        calculation - either a count or a histogram.  Overall and shape
-        components may be None.
         """
         raise NotImplementedError('abstract method')
 
@@ -177,22 +139,13 @@ def to_overall(shape, nominal):
     return shape_integral / nominal_integral
 
 
-class UncertaintyCount(Calculation):
+class UncertaintyCount(HigherOrderCalculation):
     """Calculates the uncertainty on a specific count.
+
+    The underlying calculation used to initalize UncertaintyCount should be an
+    instance of Uncertainty with the underlying calculation return a
+    floating-point count.
     """
-
-    def __init__(self, calculation, uncertainty):
-        """Initializes a new instance of the UncertaintyCount class.
-
-        Args:
-            calculation: The base calculation, whose result should be a
-                histogram
-            uncertainty: The Uncertainty subclass to use for the uncertainty
-                calculation
-        """
-        # Store the base calculation and uncertainty
-        self._calculation = calculation
-        self._uncertainty = uncertainty
 
     def __call__(self, process, region):
         """Computes the count uncertainty.
@@ -205,10 +158,10 @@ class UncertaintyCount(Calculation):
             A tuple of the form (upper_expectation, lower_expectation).
         """
         # Compute the nominal count
-        nominal = self._calculation(process, region)
+        nominal = self.calculation.calculation(process, region)
 
         # Compute the variations
-        variations = self._uncertainty(self._calculation)(process, region)
+        variations = self.calculation(process, region)
 
         # Unpack variations
         overall_up, overall_down, shape_up, shape_down = variations
@@ -248,22 +201,14 @@ def combine_count_uncertainties(count_uncertainties):
     )
 
 
-class UncertaintyBand(Calculation):
-    """Calculates an uncertainty band for a specific distribution.
+class UncertaintyBand(HigherOrderCalculation):
+    """Calculates an uncertainty band (TGraphAsymmErrors) for a specific
+    uncertainty.
+
+    The underlying calculation used to initalize UncertaintyBand should be an
+    instance of Uncertainty with the underlying calculation return a ROOT THN
+    subclass.
     """
-
-    def __init__(self, calculation, uncertainty):
-        """Initializes a new instance of the UncertaintyBand class.
-
-        Args:
-            calculation: The base calculation, whose result should be a
-                histogram
-            uncertainty: The Uncertainty subclass to use for the uncertainty
-                calculation
-        """
-        # Store the base calculation and uncertainty
-        self._calculation = calculation
-        self._uncertainty = uncertainty
 
     def __call__(self, process, region):
         """Computes the uncertainty band.
@@ -276,10 +221,10 @@ class UncertaintyBand(Calculation):
             A TGraphAsymmErrors representing the error band.
         """
         # Compute the nominal histogram
-        nominal = self._calculation(process, region)
+        nominal = self.calculation.calculation(process, region)
 
         # Compute the variations
-        variations = self._uncertainty(self._calculation)(process, region)
+        variations = self.calculation(process, region)
 
         # Unpack variations
         overall_up, overall_down, shape_up, shape_down = variations

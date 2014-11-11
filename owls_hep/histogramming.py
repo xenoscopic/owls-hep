@@ -321,6 +321,9 @@ def _histogram(process, region, expressions, binnings, load_hints = None):
 
 class Histogram(Calculation):
     """A histogramming calculation which generates a ROOT THN histogram.
+
+    Although the need should not generally arise to subclass Histogram, all
+    subclasses must return a ROOT THN subclass for their result.
     """
 
     def __init__(self, name, expressions, binnings, title, x_label, y_label):
