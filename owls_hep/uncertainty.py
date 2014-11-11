@@ -14,17 +14,16 @@ from ROOT import TH1, TGraphAsymmErrors
 
 # owls-hep imports
 from owls_hep.calculation import HigherOrderCalculation
-from owls_hep.counting import Count
-from owls_hep.histogramming import Histogram
+from owls_hep.algebra import multiply
 
 
 # Set up default exports
 __all__ = [
     'Uncertainty',
     'StatisticalUncertainty',
-    'UncertaintyCount',
+    'uncertainty_count',
     'combine_count_uncertainties',
-    'UncertaintyBand',
+    'uncertainty_band',
     'combine_uncertainty_bands',
     'ratio_uncertainty_band',
 ]
@@ -46,6 +45,9 @@ class Uncertainty(HigherOrderCalculation):
 
     All uncertainty calculations should return the same type as their
     underlying calculation.
+
+    All Uncertainty implementations should call their parent constructor if
+    they override it.
     """
 
     def name(self):
@@ -115,6 +117,7 @@ def sum_quadrature(values):
     return sqrt(sum((x ** 2 for x in values)))
 
 
+# TODO: Update the signature of this method to match to_shape
 def to_overall(shape, nominal):
     """Converts a shape variation to an overall variation.
 
@@ -139,51 +142,80 @@ def to_overall(shape, nominal):
     return shape_integral / nominal_integral
 
 
-class UncertaintyCount(HigherOrderCalculation):
-    """Calculates the uncertainty on a specific count.
+def to_shape(uncertainty, nominal):
+    """Converts an overall uncertainty to a shape uncertainty.
 
-    The underlying calculation used to initalize UncertaintyCount should be an
-    instance of Uncertainty with the underlying calculation return a
-    floating-point count.
+    If the uncertainty has no overall component, it is returned as-is.
+
+    If the uncertainty has an overall component and a shape component, the
+    shape component is disregarded and replaced by the newly converted shape
+    component.
+
+    Args:
+        uncertainty: A tuple of the form
+            (overall_up, overall_down, shape_up, shape_down)
+        nominal: The nominal shape result
+
+    Returns:
+        A tuple of the form
+            (None, None, shape_up, shape_down)
     """
+    # Extract overall uncertainties
+    overall_up, overall_down, _, _ = uncertainty
 
-    def __call__(self, process, region):
-        """Computes the count uncertainty.
+    # If we don't have overall components, bail
+    if overall_up is None or overall_down is None:
+        return uncertainty
 
-        Args:
-            process: The process to consider
-            region: The region to consider
+    # Compute the result
+    return (
+        None,
+        None,
+        multiply(overall_up, nominal),
+        multiply(overall_down, nominal)
+    )
 
-        Returns:
-            A tuple of the form (upper_expectation, lower_expectation).
-        """
-        # Compute the nominal count
-        nominal = self.calculation.calculation(process, region)
 
-        # Compute the variations
-        variations = self.calculation(process, region)
+def uncertainty_count(process, region, calculation, uncertainty, estimation):
+    """Calculates the count uncertainty for a specific uncertainty.
 
-        # Unpack variations
-        overall_up, overall_down, shape_up, shape_down = variations
+    Args:
+        process: The process to consider
+        region: The region to consider
+        calculation: The calculation, which should return a count
+        uncertainty: The Uncertainty subclass to consider
+        estimation: The Estimation subclass to consider
 
-        # Create a list of fractional variations which will be added in
-        # quadrature
-        up_variations = []
-        down_variations = []
+    Returns:
+        A tuple of the form (upper_expectation, lower_expectation).
+    """
+    # Compute the nominal histogram
+    nominal = estimation(calculation)(process, region)
 
-        # Check for overall variations
-        if nominal > 0 and overall_up is not None and overall_down is not None:
-            up_variations.append(abs(overall_up - 1.0))
-            down_variations.append(abs(overall_down - 1.0))
+    # Compute the variations
+    variations = estimation(uncertainty(calculation))(process, region)
 
-        # Check for shape variations
-        if nominal > 0 and shape_up is not None and shape_down is not None:
-            up_variations.append(abs((shape_up / nominal) - 1.0))
-            down_variations.append(abs((shape_down / nominal) - 1.0))
+    # Unpack variations
+    overall_up, overall_down, shape_up, shape_down = variations
 
-        # Combine variations in quadrature
-        return (sum_quadrature(up_variations) * nominal,
-                sum_quadrature(down_variations) * nominal)
+    # Create a list of fractional variations which will be added in
+    # quadrature
+    up_variations = []
+    down_variations = []
+
+    # Check for overall variations
+    if nominal > 0 and overall_up is not None and overall_down is not None:
+        up_variations.append(abs(overall_up - 1.0))
+        down_variations.append(abs(overall_down - 1.0))
+
+    # Check for shape variations
+    if nominal > 0 and shape_up is not None and shape_down is not None:
+        up_variations.append(abs((shape_up / nominal) - 1.0))
+        down_variations.append(abs((shape_down / nominal) - 1.0))
+
+    # Combine variations in quadrature
+    return (sum_quadrature(up_variations) * nominal,
+            sum_quadrature(down_variations) * nominal)
 
 
 def combine_count_uncertainties(count_uncertainties):
@@ -201,87 +233,82 @@ def combine_count_uncertainties(count_uncertainties):
     )
 
 
-class UncertaintyBand(HigherOrderCalculation):
+def uncertainty_band(process, region, calculation, uncertainty, estimation):
     """Calculates an uncertainty band (TGraphAsymmErrors) for a specific
     uncertainty.
 
-    The underlying calculation used to initalize UncertaintyBand should be an
-    instance of Uncertainty with the underlying calculation return a ROOT THN
-    subclass.
+    Args:
+        process: The process to consider
+        region: The region to consider
+        calculation: The calculation, which should return a histogram
+        uncertainty: The Uncertainty subclass to consider
+        estimation: The Estimation subclass to consider
+
+    Returns:
+        A TGraphAsymmErrors representing the error band.
     """
+    # Compute the nominal histogram
+    nominal = estimation(calculation)(process, region)
 
-    def __call__(self, process, region):
-        """Computes the uncertainty band.
+    # Compute the variations
+    variations = estimation(uncertainty(calculation))(process, region)
 
-        Args:
-            process: The process to consider
-            region: The region to consider
+    # Unpack variations
+    overall_up, overall_down, shape_up, shape_down = variations
 
-        Returns:
-            A TGraphAsymmErrors representing the error band.
-        """
-        # Compute the nominal histogram
-        nominal = self.calculation.calculation(process, region)
+    # Get the number of bins in the histogram
+    bins = nominal.GetNbinsX()
 
-        # Compute the variations
-        variations = self.calculation(process, region)
+    # Create the error band.  We pass it the nominal histogram just to get
+    # the binning correct.  The graph will also extract values and errors
+    # from the histogram, but that's okay because we'll overwrite them
+    # below.
+    band = TGraphAsymmErrors(nominal)
 
-        # Unpack variations
-        overall_up, overall_down, shape_up, shape_down = variations
+    # Go through each point in the graph and 0-out the Y-value and Y-error.
+    # Unfortunately we can't set the Y-value individually (which would have
+    # been great since the X-values would already be at bin centers).
+    # Anyway, no big deal, X-values are easy to set.  The X-error will have
+    # already bin set to bin width.
+    for bin in xrange(0, bins):
+        band.SetPoint(bin, band.GetX()[bin], 0)
+        band.SetPointEYhigh(bin, 0.0)
+        band.SetPointEYlow(bin, 0.0)
 
-        # Get the number of bins in the histogram
-        bins = nominal.GetNbinsX()
+    # Loop over all bins and compute errors.  Note that, of course, the TH1
+    # and TGraphAsymmErrors use different indexing schemes.
+    for bin, point in zip(range(1, bins + 1), range(0, bins)):
+        # Get the bin content
+        content = nominal.GetBinContent(bin)
 
-        # Create the error band.  We pass it the nominal histogram just to get
-        # the binning correct.  The graph will also extract values and errors
-        # from the histogram, but that's okay because we'll overwrite them
-        # below.
-        band = TGraphAsymmErrors(nominal)
+        # Create a list of fractional variations for this bin
+        up_variations = []
+        down_variations = []
 
-        # Go through each point in the graph and 0-out the Y-value and Y-error.
-        # Unfortunately we can't set the Y-value individually (which would have
-        # been great since the X-values would already be at bin centers).
-        # Anyway, no big deal, X-values are easy to set.  The X-error will have
-        # already bin set to bin width.
-        for bin in xrange(0, bins):
-            band.SetPoint(bin, band.GetX()[bin], 0)
-            band.SetPointEYhigh(bin, 0.0)
-            band.SetPointEYlow(bin, 0.0)
+        # Add any overall variations
+        if content > 0 and None not in (overall_up, overall_down):
+            up_variations.append(abs(overall_up - 1.0))
+            down_variations.append(abs(overall_down - 1.0))
 
-        # Loop over all bins and compute errors.  Note that, of course, the TH1
-        # and TGraphAsymmErrors use different indexing schemes.
-        for bin, point in zip(range(1, bins + 1), range(0, bins)):
-            # Get the bin content
-            content = nominal.GetBinContent(bin)
+        # Add any shape variations
+        if content > 0 and None not in (shape_up, shape_down):
+            # Extract the variation bins
+            up = shape_up.GetBinContent(bin)
+            down = shape_down.GetBinContent(bin)
 
-            # Create a list of fractional variations for this bin
-            up_variations = []
-            down_variations = []
+            # Compute the variations
+            up_variations.append(abs((up / content) - 1.0))
+            down_variations.append(abs((down / content) - 1.0))
 
-            # Add any overall variations
-            if content > 0 and None not in (overall_up, overall_down):
-                up_variations.append(abs(overall_up - 1.0))
-                down_variations.append(abs(overall_down - 1.0))
+        # Set the point and error
+        band.SetPoint(point, band.GetX()[point], content)
+        band.SetPointEYhigh(point,
+                            sum_quadrature(up_variations) * content)
+        band.SetPointEYlow(point,
+                           sum_quadrature(down_variations) * content)
 
-            # Add any shape variations
-            if content > 0 and None not in (shape_up, shape_down):
-                # Extract the variation bins
-                up = shape_up.GetBinContent(bin)
-                down = shape_down.GetBinContent(bin)
-
-                # Compute the variations
-                up_variations.append(abs((up / content) - 1.0))
-                down_variations.append(abs((down / content) - 1.0))
-
-            # Set the point and error
-            band.SetPoint(point, band.GetX()[point], content)
-            band.SetPointEYhigh(point,
-                                sum_quadrature(up_variations) * content)
-            band.SetPointEYlow(point,
-                               sum_quadrature(down_variations) * content)
-
-        # All done
-        return band
+    # All done
+    return band
 
 
 def combine_uncertainty_bands(bands, sum_values, title = 'Uncertainty'):

@@ -53,7 +53,7 @@ class HigherOrderCalculation(Calculation):
             calculation: The underlying calculation
         """
         # Store the calculation
-        self._calculation
+        self._calculation = calculation
 
     @property
     def calculation(self):
