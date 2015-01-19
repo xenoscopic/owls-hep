@@ -92,17 +92,16 @@ class Process(object):
     """
 
     def __init__(self,
-                 name,
                  files,
                  tree,
                  label,
                  line_color = 1,
                  fill_color = 0,
-                 marker_style = None):
+                 marker_style = None,
+                 metadata = None):
         """Initializes a new instance of the Process class.
 
         Args:
-            name: A name by which to refer to the process
             files: An iterable of ROOT file paths for files representing the
                 process
             tree: The ROOT TTree path within the files to use
@@ -114,15 +113,16 @@ class Process(object):
                 as the fill color when rendering the process
             marker_style: The ROOT TMarker number to use as the marker style
                 when rendering the process
+            metadata: A (pickleable) object containing optional metadata
         """
         # Store parameters
-        self._name = name
         self._files = tuple(files)
         self._tree = tree
         self._label = label
         self._line_color = line_color
         self._fill_color = fill_color
         self._marker_style = marker_style
+        self._metadata = metadata
 
         # Translate hex colors if necessary
         if isinstance(self._line_color, string_types):
@@ -140,8 +140,10 @@ class Process(object):
         # matter for data loading
         return hash((self._files, self._tree, self._patches))
 
-    def name(self):
-        return self._name
+    def metadata(self):
+        """Returns the metadata for the process, if any.
+        """
+        return self._metadata
 
     def load(self, properties):
         """Loads the given properties of the process data.

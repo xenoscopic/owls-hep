@@ -326,12 +326,10 @@ class Histogram(Calculation):
     subclasses must return a ROOT THN subclass for their result.
     """
 
-    def __init__(self, name, expressions, binnings, title, x_label, y_label):
+    def __init__(self, expressions, binnings, title, x_label, y_label):
         """Initializes a new instance of the Histogram calculation.
 
         Args:
-            name: A user and computer friendly name by which to refer to the
-                histogram
             expressions: The expression (as a string or 1-tuple of a string) or
                 expressions (as an N-tuple of strings), in terms of dataset
                 variables, to histogram.  The multiplicity of expressions
@@ -345,7 +343,6 @@ class Histogram(Calculation):
             y_label: The ROOT TLatex label to use for the y-axis
         """
         # Store parameters
-        self._name = name
         if isinstance(expressions, string_types):
             self._expressions = (expressions,)
         else:
@@ -362,11 +359,6 @@ class Histogram(Calculation):
         if len(self._expressions) != len(self._binnings):
             raise ValueError('histogram bin specifications must have the same '
                              'length as expression specifications')
-
-    def name(self):
-        """Returns the name for this histogram calculation.
-        """
-        return self._name
 
     def title(self):
         """Returns the title for this histogram calculation.

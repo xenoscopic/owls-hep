@@ -101,23 +101,28 @@ class Region(object):
     evaluated.
     """
 
-    def __init__(self, name, selection, weight, label, blinded = False):
+    def __init__(self,
+                 selection,
+                 weight,
+                 label,
+                 blinded = False,
+                 metadata = None):
         """Initialized a new instance of the Region class.
 
         Args:
-            name: A name by which to refer to the region
             selection: A string representing selection for the region
             weight: A string representing the weight for the region
             label: The ROOT TLatex label string to use when rendering the
                 region
             blinded: Whether or not the region is marked as blinded
+            metadata: A (pickleable) object containing optional metadata
         """
         # Store parameters
-        self._name = name
         self._selection = selection
         self._weight = weight
         self._label = label
         self._blinded = blinded
+        self._metadata = metadata
 
         # Create initial variations container
         self._variations = ()
@@ -129,10 +134,10 @@ class Region(object):
         # really matter for evaluation
         return hash((self._selection, self._weight, self._variations))
 
-    def name(self):
-        """Returns the region name.
+    def metadata(self):
+        """Returns the metadata for the region, if any.
         """
-        return self._name
+        return self._metadata
 
     def blinded(self):
         """Returns whether or not the region is blinded.
