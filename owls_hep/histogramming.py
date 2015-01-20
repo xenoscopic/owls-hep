@@ -309,7 +309,7 @@ def _histogram(process, region, expressions, binnings, load_hints = None):
 
         # HACK: TH3 doesn't have a FillN method, so we have to do things the
         # slow way.
-        # TODO: We may want to put a warning here at some point.
+        # TODO: We may want to put a warning about this slowness
         for x, y, z, w in zip(samples[0], samples[1], samples[2], weights):
             result.Fill(x, y, z, w)
     else:
