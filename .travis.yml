@@ -22,9 +22,7 @@ install:
   - mv root_v${ROOT}_python_${TRAVIS_PYTHON_VERSION} root
   - source root/bin/thisroot.sh
   - pip install pep8
-  - pip install git+https://github.com/havoc-io/owls-config.git
   - pip install git+https://github.com/havoc-io/owls-cache.git
-  - pip install git+https://github.com/havoc-io/owls-data.git
   - pip install git+https://github.com/havoc-io/owls-parallel.git
   - pip install -e .
 
