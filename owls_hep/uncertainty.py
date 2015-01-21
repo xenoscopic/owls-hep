@@ -237,6 +237,12 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
     """Calculates an uncertainty band (TGraphAsymmErrors) for a specific
     uncertainty.
 
+    NOTE: Error band bin content is not set to the bin content of the
+    histogram.  This is possible to do, but given that uncertainty bands are
+    usually combined, it makes little sense to do this and just leads to errors
+    in usage.  Instead, if you wish to plot the error band, pass the base
+    histogram upon which it should be plotted to `combine_uncertainty_bands`.
+
     Args:
         process: The process to consider
         region: The region to consider
@@ -301,7 +307,6 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
             down_variations.append(abs((down / content) - 1.0))
 
         # Set the point and error
-        band.SetPoint(point, band.GetX()[point], content)
         band.SetPointEYhigh(point,
                             sum_quadrature(up_variations) * content)
         band.SetPointEYlow(point,
@@ -311,19 +316,13 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
     return band
 
 
-def combine_uncertainty_bands(bands, sum_values, title = 'Uncertainty'):
+def combine_uncertainty_bands(bands, base = None, title = 'Uncertainty'):
     """Combines the results of multiple UncertaintyBand calculations.
 
     Args:
         bands: The uncertainty bands to combine
-        sum_values: If True, then the y-components of the uncertainty bands are
-            summed (which is what you want when combining uncertainty bands for
-            multiple processes which you will stack).  If False, then the
-            y-component of the first uncertainty band is propagated to the
-            result, the assumption being that all bands have the same
-            y-component (which is what you want when combining uncertainty
-            bands for the same process where only the magnitude of the
-            uncertainties should be summed).
+        base: The base histogram (which must have the same binning as the
+            bands) which the band bin content should be set to for plotting
         title: The title to give to the resulting combined band
 
     Returns:
@@ -341,12 +340,11 @@ def combine_uncertainty_bands(bands, sum_values, title = 'Uncertainty'):
 
     # Loop over all bins
     for i in xrange(0, result.GetN()):
-        # Set the bin content if we're summing, otherwise it will already have
-        # been propagated from the first error band
-        if sum_values:
+        # Set the content, if any
+        if base is not None:
             result.SetPoint(i,
                             result.GetX()[i],
-                            sum(b.GetY()[i] for b in bands))
+                            base.GetBinContent(i + 1))
 
         # Set the high error
         result.SetPointEYhigh(i, sum_quadrature((b.GetErrorYhigh(i)
