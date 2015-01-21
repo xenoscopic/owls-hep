@@ -61,10 +61,10 @@ def multiply(coefficient, value):
     # Handle based on type
     if isinstance(value, TH1):
         # Create the result
-        result = value_1.Clone(uuid4().hex)
+        result = value.Clone(uuid4().hex)
 
         # Scale it
-        result.Scale(value)
+        result.Scale(coefficient)
     else:
         # Create the result
         result = (coefficient * value)
