@@ -103,6 +103,11 @@ class Filter(Patch):
         """
         self._selection = normalized(selection)
 
+    def state(self):
+        """Returns a representation of the patch's internal state, if any.
+        """
+        return (self._selection,)
+
     def properties(self):
         """Returns a Python set of properties of the data required to evaluate
         the patch.
