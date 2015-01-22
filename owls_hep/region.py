@@ -65,7 +65,7 @@ class Variation(object):
 
 
 class Reweighted(Variation):
-    """A reusable region variation which multiplies an expression into the
+    """A reusable region variation that multiplies an expression into the
     region weight.
     """
 

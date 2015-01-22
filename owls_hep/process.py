@@ -16,10 +16,14 @@ from pandas import DataFrame
 # root_numpy imports
 from root_numpy import root2array, RootNumpyUnconvertibleWarning
 
+# owls-hep imports
+from owls_hep.expression import normalized, properties
+
 
 # Set up default exports
 __all__ = [
     'Patch',
+    'Filter',
     'Process',
 ]
 
@@ -85,6 +89,39 @@ class Patch(object):
             The patched DataFrame.
         """
         raise NotImplementedError('abstract method')
+
+
+class Filter(Patch):
+    """A reusable process patch that filters events according to an expression.
+    """
+
+    def __init__(self, selection):
+        """Initializes a new instance of the Filter class.
+
+        Args:
+            selection: The selection expression to apply to the process data
+        """
+        self._selection = normalized(selection)
+
+    def properties(self):
+        """Returns a Python set of properties of the data required to evaluate
+        the patch.
+
+        Returns:
+            A Python set containing strings of the required patch properties.
+        """
+        return properties(self._selection)
+
+    def __call__(self, data):
+        """Applies the selection to a DataFrame.
+
+        Args:
+            data: The DataFrame to patch
+
+        Returns:
+            The patched DataFrame.
+        """
+        return data[data.eval(self._selection)]
 
 
 class Process(object):
