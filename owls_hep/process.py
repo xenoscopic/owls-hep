@@ -38,8 +38,9 @@ class Patch(object):
         This method should not be overridden.
         """
         # HACK: Use the implementation of the patch in the hash, because the
-        # behavior of the patchis what should determine hash equality, and it's
-        # impossible to determine solely on type if the implementation changes.
+        # behavior of the patch is what should determine hash equality, and
+        # it's impossible to determine solely on type if the implementation
+        # changes.
         return hash((self.state(), getsource(self.__call__)))
 
     def state(self):
