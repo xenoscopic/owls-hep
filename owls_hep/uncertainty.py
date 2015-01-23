@@ -360,14 +360,24 @@ def combine_uncertainty_bands(bands, base = None, title = 'Uncertainty'):
     return result
 
 
-def ratio_uncertainty_band(numerator, denominator, band):
+def ratio_uncertainty_band(denominator, band):
     """Converts an uncertainty band to one that can be displayed in a ratio
     plot.
 
-    Both numerator and denominator histograms must have the same binning.
+    This method assumes that the numerator is equal to the denominator, which
+    makes the band a bit visually-misleading, because the band overlapping with
+    the error bar of a ratio point no longer indicates agreement (and similarly
+    non-overlapping doesn't indicate non-agreement).  But this is really the
+    only way to calculate a band for cases where the data is 0.0.
+
+    In any case though, it's not really possible to calculate an non-misleading
+    error band because of shape uncertainties and also because of potentially
+    large correlations between the numerator (data) and backgrounds which are
+    data-driven.
+
+    So anyway, this is as good as it gets.
 
     Args:
-        numerator: The numerator distribution of the ratio plot
         denominator: The denominator distribution of the ratio plot
         band: The uncertainty band for the denominator distribution
 
@@ -378,44 +388,52 @@ def ratio_uncertainty_band(numerator, denominator, band):
     result = band.Clone(uuid4().hex)
 
     # Calculate the number of bins
-    bins = numerator.GetNbinsX()
+    bins = denominator.GetNbinsX()
 
     # Loop over all bins
     # NOTE: We don't handle overflow because TGraphAsymmErrors doesn't have a
     # notion of overflow bins
     for bin, point in zip(range(1, bins + 1), range(0, bins)):
-        # Set the band nominal point to center around Y = 1.0
-        result.SetPoint(point, result.GetX()[point], 1.0)
-
         # Extract the bin content
-        numerator_value = numerator.GetBinContent(bin)
         denominator_value = denominator.GetBinContent(bin)
 
         # Compute denominator variations
         denominator_value_up = denominator_value + band.GetErrorYhigh(point)
         denominator_value_down = denominator_value - band.GetErrorYlow(point)
 
-        # Calculate nominal ratio
-        if denominator_value != 0.0:
-            ratio_nominal = numerator_value / denominator_value
-        else:
-            ratio_nominal = 0.0
+        # If any component drops below 0, then set it to 0, because negative
+        # bin errors tend to mess up the error band
+        denominator_value = max(denominator_value, 0.0)
+        denominator_value_up = max(denominator_value_up, 0.0)
+        denominator_value_down = max(denominator_value_down, 0.0)
 
-        # Calculate up ratio
+        # Calculate up ratio (the ratio assuming the denominator takes its
+        # maximum value under the uncertainty)
         if denominator_value_up != 0.0:
-            ratio_up = numerator_value / denominator_value_up
+            ratio_up = denominator_value / denominator_value_up
         else:
-            ratio_up = 0.0
+            # HACK: Set a value which will make the error bars extend out of
+            # range
+            ratio_up = -100.0
 
-        # Calculate down ratio
+        # Calculate down ratio (the ratio assuming the denominator takes its
+        # minimum value under the uncertainty)
         if denominator_value_down != 0.0:
-            ratio_down = numerator_value / denominator_value_down
+            ratio_down = denominator_value / denominator_value_down
         else:
-            ratio_down = 0.0
+            # HACK: Set a value which will make the error bars extend out of
+            # range
+            ratio_down = 100.0
 
-        # Set errors
-        # Note that ratio_up < ratio_nominal, ratio_down > ratio_nominal
-        result.SetPointEYhigh(point, ratio_down - ratio_nominal)
-        result.SetPointEYlow(point, ratio_nominal - ratio_up)
+        # Set the band nominal point to center around Y = 1.0
+        result.SetPoint(point, result.GetX()[point], 1.0)
+
+        # Set errors.  You might naively assume that the high error should be
+        # set to the down variation and the low error to the high variation
+        # since these are errors on the denominator.  However, because you want
+        # the error band to indicate movement towards agreement with the data,
+        # it turns out that you actually want it the other way around.
+        result.SetPointEYhigh(point, 1.0 - ratio_up)
+        result.SetPointEYlow(point, ratio_down - 1.0)
 
     return result

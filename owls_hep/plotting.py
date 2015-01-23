@@ -307,7 +307,8 @@ class Plot(object):
     PLOT_Y_AXIS_TITLE_OFFSET = 1.0
     PLOT_Y_AXIS_TITLE_OFSET_WITH_RATIO = 0.75
     PLOT_Y_AXIS_LABEL_SIZE_WITH_RATIO = 0.05
-    PLOT_RATIO_Y_AXIS_TITLE_SIZE = 0.12
+    PLOT_RATIO_Y_AXIS_TITLE_SIZE = 0.09
+    PLOT_RATIO_Y_AXIS_TITLE_OFFSET = 0.45
     PLOT_RATIO_Y_AXIS_LABEL_SIZE = 0.12
     PLOT_RATIO_Y_AXIS_MINIMUM = 0.6
     PLOT_RATIO_Y_AXIS_MAXIMUM = 1.4
@@ -692,13 +693,17 @@ class Plot(object):
         if self._x_range:
             x_axis.SetRangeUser(*self._x_range)
         y_axis.SetTitleSize(self.PLOT_RATIO_Y_AXIS_TITLE_SIZE)
+        y_axis.SetTitleOffset(self.PLOT_RATIO_Y_AXIS_TITLE_OFFSET)
         y_axis.SetLabelSize(self.PLOT_RATIO_Y_AXIS_LABEL_SIZE)
         y_axis.SetRangeUser(self.PLOT_RATIO_Y_AXIS_MINIMUM,
                             self.PLOT_RATIO_Y_AXIS_MAXIMUM)
         y_axis.SetNdivisions(504, False)
 
         # Draw it
-        histogram.Draw('ep')
+        # NOTE: Have to specify E0 or points out of the vertical range won't
+        # have their error bars drawn:
+        #   https://root.cern.ch/phpBB3/viewtopic.php?f=3&t=13329
+        histogram.Draw('e0p')
 
         # Draw a line at unity if requested
         if draw_unity:
@@ -738,7 +743,7 @@ class Plot(object):
         # histogram so that its point lie on top of the unity line or error
         # band, but use 'same' so that the axes/ticks don't cover the red line
         if draw_unity or error_band:
-            histogram.Draw('epsame')
+            histogram.Draw('e0psame')
 
     def draw_atlas_label(self,
                          luminosity,
