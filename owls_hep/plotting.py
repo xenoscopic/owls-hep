@@ -29,6 +29,9 @@ from math import ceil, sqrt
 from uuid import uuid4
 from itertools import chain
 
+# Six imports
+from six.moves import range
+
 # ROOT imports
 # HACK: We import and use SetOwnership because ROOT's memory management is so
 # inconsistent and terrible that we have to stop Python from even touching ROOT
@@ -187,11 +190,13 @@ def maximum_value(drawables):
     return result
 
 
-def ratio_histogram(numerator, denominator, y_title = 'Data / MC'):
+def ratio_histogram(numerator, denominator, y_title = 'Data / Background'):
     """Creates a ratio histogram by dividing a numerator histogram by a
-    denominator histogram, properly calculating errors.  This method also
-    provides some basic styling of the ratio histogram, disabling statistics
-    and title, and setting markers appropriately.
+    denominator histogram.  Errors are calculated under the assumption of error
+    on the numerator histogram only (the errors for the denominator histogram
+    should be calculated by owls_hep.uncertainty.ratio_uncertainty_band).  This
+    method also provides some basic styling of the ratio histogram, disabling
+    statistics and title, and setting markers appropriately.
 
     Args:
         numerator: A single histogram, an iterable of histograms, or a THStack
@@ -209,8 +214,16 @@ def ratio_histogram(numerator, denominator, y_title = 'Data / MC'):
     # enabled)
     result = combined_histogram(numerator)
 
+    # Create the denominator
+    combined_denominator = combined_histogram(denominator)
+
+    # Disable errors on the denominator (they should be handled in an
+    # uncertainty band around unity)
+    for bin in xrange(0, combined_denominator.GetNbinsX() + 2):
+        combined_denominator.SetBinError(bin, 0.0)
+
     # Divide by the denominator
-    result.Divide(combined_histogram(denominator))
+    result.Divide(combined_denominator)
 
     # Do some styling on the result
     result.SetTitle('')
@@ -652,7 +665,7 @@ class Plot(object):
             histogram: The ratio histogram to draw (use ratio_histogram)
             draw_unity: Whether or not to draw a line at 1
             error_band: An error band to draw under the ratio histogram
-                (see SystematicCalculator.error_band_for_processes_in_region)
+                (see owls_hep.uncertainty.ratio_uncertainty_band)
 
         The histogram X axis title is set by draw_histogram if not set
         explicitly. draw_ratio_histogram should therefore be called after
