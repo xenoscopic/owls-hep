@@ -124,9 +124,9 @@ class Filter(Patch):
             data: The DataFrame to patch
 
         Returns:
-            The patched DataFrame.
+            The filtered DataFrame.
         """
-        return data[data.eval(self._selection)]
+        return data.query(self._selection)
 
 
 class Process(object):

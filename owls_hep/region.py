@@ -8,7 +8,7 @@ import re
 from copy import deepcopy
 
 # owls-data imports
-from owls_hep.expression import multiplied
+from owls_hep.expression import normalized, multiplied
 
 
 # Set up default exports
@@ -76,7 +76,7 @@ class Reweighted(Variation):
             weight: The weight expression to incorporate into the region
         """
         # Store the weight
-        self._weight = weight
+        self._weight = normalized(weight)
 
     def state(self):
         """Returns a representation of the variation's internal state.
