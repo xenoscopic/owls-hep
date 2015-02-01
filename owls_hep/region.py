@@ -134,6 +134,11 @@ class Region(object):
         # really matter for evaluation
         return hash((self._selection, self._weight, self._variations))
 
+    def label(self):
+        """Returns the label for the region, if any.
+        """
+        return self._label
+
     def metadata(self):
         """Returns the metadata for the region, if any.
         """

@@ -305,10 +305,10 @@ class Plot(object):
     PLOT_Y_AXIS_TITLE_SIZE = PLOT_X_AXIS_TITLE_SIZE
     PLOT_Y_AXIS_TITLE_SIZE_WITH_RATIO = 0.06
     PLOT_Y_AXIS_TITLE_OFFSET = 1.0
-    PLOT_Y_AXIS_TITLE_OFSET_WITH_RATIO = 0.75
+    PLOT_Y_AXIS_TITLE_OFSET_WITH_RATIO = 0.95
     PLOT_Y_AXIS_LABEL_SIZE_WITH_RATIO = 0.05
     PLOT_RATIO_Y_AXIS_TITLE_SIZE = 0.09
-    PLOT_RATIO_Y_AXIS_TITLE_OFFSET = 0.45
+    PLOT_RATIO_Y_AXIS_TITLE_OFFSET = 0.575
     PLOT_RATIO_Y_AXIS_LABEL_SIZE = 0.12
     PLOT_RATIO_Y_AXIS_MINIMUM = 0.6
     PLOT_RATIO_Y_AXIS_MAXIMUM = 1.4
@@ -906,10 +906,13 @@ class Plot(object):
         for drawable in legend_order:
             SetOwnership(drawable, False)
             title = drawable.GetTitle()
-            # NOTE: Convention: legend for drawables with a non-default
-            # marker style to be drawn with lp
+            # HACK: Convention: legend for drawables with a non-default
+            # marker style (data) to be drawn as line with point, and with
+            # empty fill (signal) to be drawn as line
             if drawable.GetMarkerStyle() != 0:
                 self._legend.AddEntry(drawable, title, 'lp')
+            elif drawable.GetFillColor() == 0:
+                self._legend.AddEntry(drawable, title, 'l')
             else:
                 self._legend.AddEntry(drawable, title, 'f')
 

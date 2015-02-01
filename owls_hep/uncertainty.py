@@ -20,7 +20,6 @@ from owls_hep.algebra import multiply
 # Set up default exports
 __all__ = [
     'Uncertainty',
-    'StatisticalUncertainty',
     'uncertainty_count',
     'combine_count_uncertainties',
     'uncertainty_band',
@@ -56,53 +55,6 @@ class Uncertainty(HigherOrderCalculation):
         Implementers must override this method.
         """
         raise NotImplementedError('abstract method')
-
-
-class StatisticalUncertainty(Uncertainty):
-    """Computes the statistical uncertainty associated with a count or
-    distribution.
-    """
-
-    def name(self):
-        """Returns the name of the uncertainty.
-        """
-        return 'Statistical'
-
-    def __call__(self, process, region):
-        """Evaluates the uncertainty on the given process/region.
-
-        Args:
-            process: The process to consider
-            region: The region to consider
-
-        Returns:
-            A tuple of the form (shape_up, shape_down).
-        """
-        # Execute the calculation
-        value = self.calculation(process, region)
-
-        # Statistical uncertainty is a bit of a special case, because it is
-        # derived from the result of the calculation itself, and not a
-        # variation of the inputs to the calculation.  Thus we need to handle
-        # based on type.
-        if isinstance(value, TH1):
-            # Create up/down clones
-            up = value.Clone(uuid4().hex)
-            down = value.Clone(uuid4().hex)
-
-            # Modify each bin (note that we do underflow/overflow)
-            for i in range(0, value.GetNbinsX() + 2):
-                content = value.GetBinContent(i)
-                up.SetBinContent(i, content + sqrt(abs(content)))
-                down.SetBinContent(i, content - sqrt(abs(content)))
-
-            # Create the result
-            result = (None, None, up, down)
-        else:
-            result = (None, None, value + sqrt(value), value - sqrt(value))
-
-        # All done
-        return result
 
 
 def sum_quadrature(values):
@@ -247,7 +199,8 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
         process: The process to consider
         region: The region to consider
         calculation: The calculation, which should return a histogram
-        uncertainty: The Uncertainty subclass to consider
+        uncertainty: The Uncertainty subclass to consider, or None to compute
+            statistical uncertainty
         estimation: The Estimation subclass to consider
 
     Returns:
@@ -256,14 +209,27 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
     # Compute the nominal histogram
     nominal = estimation(calculation)(process, region)
 
+    # Get the number of bins in the histogram
+    bins = nominal.GetNbinsX()
+
     # Compute the variations
-    variations = estimation(uncertainty(calculation))(process, region)
+    if uncertainty is not None:
+        variations = estimation(uncertainty(calculation))(process, region)
+    else:
+        # Compute statistical variations
+        stat_up = nominal.Clone(uuid4().hex)
+        stat_down = nominal.Clone(uuid4().hex)
+        for bin in xrange(0, bins + 2):
+            stat_content = nominal.GetBinContent(bin)
+            stat_uncertainty = nominal.GetBinError(bin)
+            stat_up.SetBinContent(bin, stat_content + stat_uncertainty)
+            stat_down.SetBinContent(bin, stat_content - stat_uncertainty)
+
+        # Pack them up
+        variations = None, None, stat_up, stat_down
 
     # Unpack variations
     overall_up, overall_down, shape_up, shape_down = variations
-
-    # Get the number of bins in the histogram
-    bins = nominal.GetNbinsX()
 
     # Create the error band.  We pass it the nominal histogram just to get
     # the binning correct.  The graph will also extract values and errors
