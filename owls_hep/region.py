@@ -5,7 +5,7 @@
 # System imports
 from inspect import getsource
 import re
-from copy import deepcopy
+from copy import copy
 
 # owls-data imports
 from owls_hep.expression import normalized, multiplied
@@ -159,7 +159,7 @@ class Region(object):
             A duplicate region, but with the specified variation applied.
         """
         # Create the copy
-        result = deepcopy(self)
+        result = copy(self)
 
         # Add the variation
         result._variations += (variation,)

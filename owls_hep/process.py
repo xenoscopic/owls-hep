@@ -5,7 +5,7 @@
 # System imports
 import warnings
 from inspect import getsource
-from copy import deepcopy
+from copy import copy
 
 # Six imports
 from six import string_types
@@ -237,7 +237,7 @@ class Process(object):
             A copy of the process with the tree modified.
         """
         # Create the copy
-        result = deepcopy(self)
+        result = copy(self)
 
         # Retree
         result._tree = tree
@@ -255,7 +255,7 @@ class Process(object):
             A copy of the process with the additional patch applied.
         """
         # Create the copy
-        result = deepcopy(self)
+        result = copy(self)
 
         # Add the patch
         result._patches += (patch,)
