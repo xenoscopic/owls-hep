@@ -6,6 +6,7 @@ region.
 # System imports
 from uuid import uuid4
 from functools import wraps
+import gc
 
 # Six imports
 from six import string_types
@@ -200,6 +201,9 @@ def _parallel_batcher(function, args_kwargs):
         # Call the functions with load hints
         kwargs['load_hints'] = all_properties
         function(*args, **kwargs)
+
+    # Force garbage collection
+    gc.collect()
 
     # Clear the load caches of the caching loader
     _caching_loader.caches.clear()
