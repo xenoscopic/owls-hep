@@ -21,9 +21,9 @@ from owls_hep.algebra import multiply
 __all__ = [
     'Uncertainty',
     'uncertainty_count',
-    'combine_count_uncertainties',
+    'combined_count_uncertainty',
     'uncertainty_band',
-    'combine_uncertainty_bands',
+    'combined_uncertainty_band',
     'ratio_uncertainty_band',
 ]
 
@@ -170,7 +170,7 @@ def uncertainty_count(process, region, calculation, uncertainty, estimation):
             sum_quadrature(down_variations) * nominal)
 
 
-def combine_count_uncertainties(count_uncertainties):
+def combined_count_uncertainty(count_uncertainties):
     """Combines the results of multiple UncertaintyCount calculations.
 
     Args:
@@ -189,11 +189,15 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
     """Calculates an uncertainty band (TGraphAsymmErrors) for a specific
     uncertainty.
 
-    NOTE: Error band bin content is not set to the bin content of the
-    histogram.  This is possible to do, but given that uncertainty bands are
-    usually combined, it makes little sense to do this and just leads to errors
-    in usage.  Instead, if you wish to plot the error band, pass the base
-    histogram upon which it should be plotted to `combine_uncertainty_bands`.
+    Any uncertainties (except systematic) that have a shape component will have
+    the shape component converted to an overall component (considered in
+    addition to any existing overall component).
+
+    NOTE: The y-component of the uncertainty band will NOT be set to bin
+    content because this leads to errors in usage when combining the bands and
+    is only really necessary when computing the final combined band, so instead
+    simply pass a base for the error band when calling
+    combined_uncertainty_band.
 
     Args:
         process: The process to consider
@@ -209,33 +213,39 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
     # Compute the nominal histogram
     nominal = estimation(calculation)(process, region)
 
-    # Get the number of bins in the histogram
-    bins = nominal.GetNbinsX()
-
-    # Compute the variations
+    # Compute and unpack variations
     if uncertainty is not None:
+        # Perform the uncertainty estimation
         variations = estimation(uncertainty(calculation))(process, region)
+
+        # Unpack variations
+        overall_up, overall_down, shape_up, shape_down = variations
+
+        # Convert any shape variations to overall
+        if shape_up is None:
+            shape_overall_up = None
+        else:
+            shape_overall_up = to_overall(shape_up, nominal)
+            shape_up = None
+        if shape_down is None:
+            shape_overall_down = None
+        else:
+            shape_overall_down = to_overall(shape_down, nominal)
+            shape_down = None
     else:
         # Compute statistical variations
-        stat_up = nominal.Clone(uuid4().hex)
-        stat_down = nominal.Clone(uuid4().hex)
-        for bin in xrange(0, bins + 2):
-            stat_content = nominal.GetBinContent(bin)
-            stat_uncertainty = nominal.GetBinError(bin)
-            stat_up.SetBinContent(bin, stat_content + stat_uncertainty)
-            stat_down.SetBinContent(bin, stat_content - stat_uncertainty)
-
-        # Pack them up
-        variations = None, None, stat_up, stat_down
-
-    # Unpack variations
-    overall_up, overall_down, shape_up, shape_down = variations
+        overall_up = overall_down = None
+        shape_up = shape_down = None
+        shape_overall_up = shape_overall_down = None
 
     # Create the error band.  We pass it the nominal histogram just to get
     # the binning correct.  The graph will also extract values and errors
     # from the histogram, but that's okay because we'll overwrite them
     # below.
     band = TGraphAsymmErrors(nominal)
+
+    # Get the number of bins in the histogram
+    bins = nominal.GetNbinsX()
 
     # Go through each point in the graph and 0-out the Y-value and Y-error.
     # Unfortunately we can't set the Y-value individually (which would have
@@ -247,42 +257,49 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
         band.SetPointEYhigh(bin, 0.0)
         band.SetPointEYlow(bin, 0.0)
 
-    # Loop over all bins and compute errors.  Note that, of course, the TH1
-    # and TGraphAsymmErrors use different indexing schemes.
+    # Loop over all bins and compute uncertainties
     for bin, point in zip(range(1, bins + 1), range(0, bins)):
         # Get the bin content
         content = nominal.GetBinContent(bin)
+
+        # If the content is 0, there are no uncertainties, because we only
+        # consider overall and statistical uncertainties
+        if content == 0.0:
+            band.SetPointEYhigh(point, 0.0)
+            band.SetPointEYlow(point, 0.0)
+            continue
 
         # Create a list of fractional variations for this bin
         up_variations = []
         down_variations = []
 
         # Add any overall variations
-        if content > 0 and None not in (overall_up, overall_down):
-            up_variations.append(abs(overall_up - 1.0))
-            down_variations.append(abs(overall_down - 1.0))
+        if overall_up is not None:
+            up_variations.append(overall_up - 1.0)
+        if overall_down is not None:
+            down_variations.append(1.0 - overall_down)
+        if shape_overall_up is not None:
+            up_variations.append(shape_overall_up - 1.0)
+        if shape_overall_down is not None:
+            down_variations.append(1.0 - shape_overall_down)
 
-        # Add any shape variations
-        if content > 0 and None not in (shape_up, shape_down):
-            # Extract the variation bins
-            up = shape_up.GetBinContent(bin)
-            down = shape_down.GetBinContent(bin)
+        # Add the statistical variation if uncertainty is None
+        if uncertainty is None:
+            statistical_variation = nominal.GetBinError(bin) / content
+            up_variations.append(statistical_variation)
+            down_variations.append(statistical_variation)
 
-            # Compute the variations
-            up_variations.append(abs((up / content) - 1.0))
-            down_variations.append(abs((down / content) - 1.0))
-
-        # Set the point and error
-        band.SetPointEYhigh(point,
-                            sum_quadrature(up_variations) * content)
-        band.SetPointEYlow(point,
-                           sum_quadrature(down_variations) * content)
+        # Set the point and error.  Note that, since we sum things in
+        # quadrature, it really doesn't matter how we compute the differences
+        # above.
+        band.SetPointEYhigh(point, sum_quadrature(up_variations) * content)
+        band.SetPointEYlow(point, sum_quadrature(down_variations) * content)
 
     # All done
     return band
 
 
-def combine_uncertainty_bands(bands, base = None, title = 'Uncertainty'):
+def combined_uncertainty_band(bands, base = None, title = 'Uncertainty'):
     """Combines the results of multiple UncertaintyBand calculations.
 
     Args:
@@ -330,16 +347,30 @@ def ratio_uncertainty_band(denominator, band):
     """Converts an uncertainty band to one that can be displayed in a ratio
     plot.
 
-    This method assumes that the numerator is equal to the denominator, which
-    makes the band a bit visually-misleading, because the band overlapping with
-    the error bar of a ratio point no longer indicates agreement (and similarly
-    non-overlapping doesn't indicate non-agreement).  But this is really the
-    only way to calculate a band for cases where the data is 0.0.
+    In truth, all ratio uncertainty bands are visually-misleading because the
+    error bands from which they are derived don't take into account shape
+    uncertainties and because they fail to take into account large correlations
+    between the numerator (data) and backgrounds which are data-driven.  Also,
+    we choose a somewhat arbitrary definition of for this band so that it
+    visually conforms to intuition about agreement between uncertainty bands
+    in the distribution above it (e.g. if bands just touch, the ratio error
+    bands should just touch, if they overlap, the ratio error bands should
+    overlap, etc).  We thus define it as:
 
-    In any case though, it's not really possible to calculate an non-misleading
-    error band because of shape uncertainties and also because of potentially
-    large correlations between the numerator (data) and backgrounds which are
-    data-driven.
+        up = (numerator/denominator)
+             - ((numerator - denominator_up_unc) / denominator)
+           = denominator_up_unc / denominator
+        down = (numerator/denominator)
+               - ((numerator - denominator_down_unc) / denominator)
+             = denominator_down_unc / denominator
+
+    You might naively think the uncertainty would be added/subtracted to/from
+    the denominator, but this doesn't have the desired visual meaning, i.e. how
+    the variation would move *unity*.
+
+    This definition also has the nice property that there is no dependence on
+    the numerator, so the error band is always defined if the denominator is
+    defined.
 
     So anyway, this is as good as it gets.
 
@@ -360,46 +391,26 @@ def ratio_uncertainty_band(denominator, band):
     # NOTE: We don't handle overflow because TGraphAsymmErrors doesn't have a
     # notion of overflow bins
     for bin, point in zip(range(1, bins + 1), range(0, bins)):
-        # Extract the bin content
-        denominator_value = denominator.GetBinContent(bin)
-
-        # Compute denominator variations
-        denominator_value_up = denominator_value + band.GetErrorYhigh(point)
-        denominator_value_down = denominator_value - band.GetErrorYlow(point)
-
-        # If any component drops below 0, then set it to 0, because negative
-        # bin errors tend to mess up the error band
-        denominator_value = max(denominator_value, 0.0)
-        denominator_value_up = max(denominator_value_up, 0.0)
-        denominator_value_down = max(denominator_value_down, 0.0)
-
-        # Calculate up ratio (the ratio assuming the denominator takes its
-        # maximum value under the uncertainty)
-        if denominator_value_up != 0.0:
-            ratio_up = denominator_value / denominator_value_up
-        else:
-            # HACK: Set a value which will make the error bars extend out of
-            # range
-            ratio_up = -100.0
-
-        # Calculate down ratio (the ratio assuming the denominator takes its
-        # minimum value under the uncertainty)
-        if denominator_value_down != 0.0:
-            ratio_down = denominator_value / denominator_value_down
-        else:
-            # HACK: Set a value which will make the error bars extend out of
-            # range
-            ratio_down = 100.0
-
         # Set the band nominal point to center around Y = 1.0
         result.SetPoint(point, result.GetX()[point], 1.0)
 
-        # Set errors.  You might naively assume that the high error should be
-        # set to the down variation and the low error to the high variation
-        # since these are errors on the denominator.  However, because you want
-        # the error band to indicate movement towards agreement with the data,
-        # it turns out that you actually want it the other way around.
-        result.SetPointEYhigh(point, 1.0 - ratio_up)
-        result.SetPointEYlow(point, ratio_down - 1.0)
+        # Extract the bin content
+        denominator_value = denominator.GetBinContent(bin)
 
+        # If the bin content is 0, then the uncertainty is 0, otherwise it is
+        # the definition given above
+        if denominator_value == 0.0:
+            result.SetPointEYhigh(point, 0.0)
+            result.SetPointEYlow(point, 0.0)
+        else:
+            result.SetPointEYhigh(
+                point,
+                band.GetErrorYhigh(point) / denominator_value
+            )
+            result.SetPointEYlow(
+                point,
+                band.GetErrorYlow(point) / denominator_value
+            )
+
+    # All done
     return result
