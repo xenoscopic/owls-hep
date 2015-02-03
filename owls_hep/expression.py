@@ -76,121 +76,118 @@ def variable_negated(expression, variable):
     return _property_regex.sub(negator, expression)
 
 
-def _combined(expression_1, expression_2, operator):
-    """Private method to handle binary expression composition
+def _combined(expressions, operator):
+    """Private method to handle expression composition with a binary infix
+    operator.
 
     Args:
-        expression_1: The first expression string
-        expression_2: The second expression string
-        operator: The operator string with which to combine the expressions
-
-    Returns:
-        The combined binary expression string.
-    """
-    return '(({0}) {1} ({2}))'.format(expression_1, operator, expression_2)
-
-
-def added(expression_1, expression_2):
-    """Returns the added expression combing two expressions.
-
-    Args:
-        expression_1: The first expression string
-        expression_2: The second expression string
+        expressions: An iterable of expressions
+        operator: The binary infix operator string with which to combine the
+            expressions
 
     Returns:
         The combined expression string.
     """
-    return _combined(expression_1, expression_2, '+')
+    return '({0})'.format(
+        ' {0} '.format(operator).join((
+            '({0})'.format(e) for e in expressions
+        ))
+    )
 
 
-def subtracted(expression_1, expression_2):
-    """Returns the expression subtracting expression_2 from expression_1.
+def added(*expressions):
+    """Returns the added expression adding multiple expressions.
 
     Args:
-        expression_1: The first expression string
-        expression_2: The second expression string
+        *expressions: The expressions to combine
 
     Returns:
         The combined expression string.
     """
-    return _combined(expression_1, expression_2, '-')
+    return _combined(expressions, '+')
 
 
-def multiplied(expression_1, expression_2):
-    """Returns the multipled expression combing two expressions.
+def subtracted(*expressions):
+    """Returns the expression subtracting multiple expressions.
 
     Args:
-        expression_1: The first expression string
-        expression_2: The second expression string
+        *expressions: The expressions to combine
 
     Returns:
         The combined expression string.
     """
-    return _combined(expression_1, expression_2, '*')
+    return _combined(expressions, '-')
 
 
-def divided(expression_1, expression_2):
-    """Returns the expression dividing expression_1 by expression_2 using the
-    '/' division operator.
+def multiplied(*expressions):
+    """Returns the multipled expression combing multiple expressions.
 
     Args:
-        expression_1: The first expression string
-        expression_2: The second expression string
+        *expressions: The expressions to combine
 
     Returns:
         The combined expression string.
     """
-    return _combined(expression_1, expression_2, '/')
+    return _combined(expressions, '*')
 
 
-def floor_divided(expression_1, expression_2):
-    """Returns the expression dividing expression_1 by expression_2 using the
-    '//' floor division operator.
+def divided(*expressions):
+    """Returns the expression dividing expressions using the '/' division
+    operator.
 
     Args:
-        expression_1: The first expression string
-        expression_2: The second expression string
+        *expressions: The expressions to combine
 
     Returns:
         The combined expression string.
     """
-    return _combined(expression_1, expression_2, '//')
+    return _combined(expressions, '/')
 
 
-def anded(expression_1, expression_2):
-    """Returns the 'and' expression combing two expressions.
+def floor_divided(*expressions):
+    """Returns the expression dividing expressions using the '//' floor
+    division operator.
 
     Args:
-        expression_1: The first expression string
-        expression_2: The second expression string
+        *expressions: The expressions to combine
 
     Returns:
         The combined expression string.
     """
-    return _combined(expression_1, expression_2, '&&')
+    return _combined(expressions, '//')
 
 
-def ored(expression_1, expression_2):
-    """Returns the 'or' expression combing two expressions.
+def anded(*expressions):
+    """Returns the 'and' expression combining multiple expressions.
 
     Args:
-        expression_1: The first expression string
-        expression_2: The second expression string
+        *expressions: The expressions to combine
 
     Returns:
         The combined expression string.
     """
-    return _combined(expression_1, expression_2, '||')
+    return _combined(expressions, '&&')
 
 
-def xored(expression_1, expression_2):
-    """Returns the 'xor' expression combing two expressions.
+def ored(*expressions):
+    """Returns the 'or' expression combining multiple expressions.
 
     Args:
-        expression_1: The first expression string
-        expression_2: The second expression string
+        *expressions: The expressions to combine
 
     Returns:
         The combined expression string.
     """
-    return _combined(expression_1, expression_2, '^')
+    return _combined(expressions, '||')
+
+
+def xored(*expressions):
+    """Returns the 'xor' expression combining multiple expressions.
+
+    Args:
+        *expressions: The expressions to combine
+
+    Returns:
+        The combined expression string.
+    """
+    return _combined(expressions, '^')
