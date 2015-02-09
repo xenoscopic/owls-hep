@@ -26,8 +26,13 @@ _thread_local.definitions = []
 
 
 # Utility function to set the current thread's variables
-_push_definitions = lambda d: _thread_local.definitions.append(d)
-_pop_definitions = lambda: _thread_local.definitions.pop()
+def _push_definitions(d):
+    _thread_local.definitions.append(d)
+
+
+# Utility function to unset the current thread's variables
+def _pop_definitions():
+    _thread_local.definitions.pop()
 
 
 def definitions():
@@ -42,17 +47,16 @@ def definitions():
 # Define a method which can load modules by path.  The exact method depends on
 # the Python version.
 _major_version = version_info[0]
-_module_id = lambda: uuid4().hex
 if _major_version == 2:
     import imp
 
     def _load_module(path):
-        return imp.load_source(_module_id(), path)
+        return imp.load_source(uuid4().hex, path)
 elif _major_version == 3:
     import importlib.machinery
 
     def _load_module(path):
-        loader = importlib.machinery.SourceFileLoader(_module_id(), path)
+        loader = importlib.machinery.SourceFileLoader(uuid4().hex, path)
         return loader.load_module()
 else:
     raise RuntimeError('unable to manually load modules for this version of '

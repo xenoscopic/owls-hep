@@ -42,23 +42,28 @@ from ROOT import TCanvas, TPad, TH1, THStack, TGraph, TMath, TLegend, TLine, \
 
 
 # Convenience function for generating random IDs
-_rand_uuid = lambda: uuid4().hex
+def _rand_uuid():
+    uuid4().hex
 
 
 # Convenience function to check if an object is a TH1
-is_histo = lambda h: isinstance(h, TH1)
+def is_histo(h):
+    isinstance(h, TH1)
 
 
 # Convenience function to check if an object is a THStack
-is_stack = lambda h: isinstance(h, THStack)
+def is_stack(h):
+    isinstance(h, THStack)
 
 
 # Convenience function to check if an object is a TGraph
-is_graph = lambda g: isinstance(g, TGraph)
+def is_graph(g):
+    isinstance(g, TGraph)
 
 
 # Convenience function to check if an object is a TLine
-is_line = lambda l: isinstance(l, TLine)
+def is_line(l):
+    isinstance(l, TLine)
 
 
 def drawable_iterable(drawable, unpack_stacks = False, reverse_stacks = False):
