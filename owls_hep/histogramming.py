@@ -15,7 +15,7 @@ from six import string_types
 import numpy
 
 # ROOT imports
-from ROOT import TH1F, TH2F, TH3F
+from ROOT import TH1F, TH2F, TH3F, nullptr
 
 # owls-cache imports
 from owls_cache.transient import cached as transiently_cached
@@ -183,6 +183,9 @@ def _caching_loader(process, properties):
 # Histogram parallelization batcher
 def _parallel_batcher(function, args_kwargs):
     # Create a combined set of properties necessary for all calls
+    # NOTE: We don't need to handle patch properties because those are handled
+    # internally by the process and we're only dealing with one process in
+    # batch mode
     all_properties = set()
     for args, kwargs in args_kwargs:
         # Extract region and expressions
@@ -241,27 +244,30 @@ def _histogram(process, region, expressions, binnings, load_hints = None):
     # Expand binnings to edge lists
     edges = tuple((b.edges() for b in binnings))
 
-    # Compute required data properties
-    required_properties = load_hints if load_hints is not None else set()
-
-    # Add in those properties necessary to evaluate the selection and weight
-    required_properties.update(properties(selection))
-    required_properties.update(properties(weight))
-
-    # Add in those properties necessary to evaluate expressions
-    required_properties.update(*(properties(e) for e in expressions))
-
-    # Load data, using the _caching_loader if load_hints have been provided
+    # Load data
     if load_hints is not None:
-        data = _caching_loader(process, required_properties)
+        # If load_hints have been provided, just use those with the
+        # _caching_loader
+        data = _caching_loader(process, load_hints)
     else:
+        # Otherwise manually create the set of necessary properties
+        # NOTE: All we need to do are region and expression properties - patch
+        # properties are handled internally by the process
+        required_properties = set()
+
+        # Add those properties necessary to evaluate region selection/weight
+        required_properties.update(properties(selection))
+        required_properties.update(properties(weight))
+
+        # Add in those properties necessary to evaluate expressions
+        required_properties.update(*(properties(e) for e in expressions))
+
+        # Load data
         data = process.load(required_properties)
 
-    # Extract just those events passing the selection
-    data = data[data.eval(normalized(selection))]
-
-    # Count the number of events passing selection
-    count = len(data)
+    # Apply selection if specified
+    if selection != '':
+        data = data[data.eval(normalized(selection))]
 
     # Evaluate each variable expression, converting the resultant Pandas Series
     # to a NumPy array
@@ -274,7 +280,10 @@ def _histogram(process, region, expressions, binnings, load_hints = None):
     # Evaluate weights, converting the resultant Pandas Series to a NumPy array
     # HACK: TH1::FillN only supports 64-bit floating point values, so convert
     # things.  Would be nice to find a better approach.
-    weights = data.eval(normalized(weight)).values.astype(numpy.float64)
+    if weight != '':
+        weights = data.eval(normalized(weight)).values.astype(numpy.float64)
+    else:
+        weights = nullptr
 
     # Create a unique name and title for the histogram
     name = title = uuid4().hex
@@ -285,6 +294,7 @@ def _histogram(process, region, expressions, binnings, load_hints = None):
     # the code below.  If you pass length for n bins, then you'll get garbage
     # for the last bin's upper edge and things go nuts in ROOT.
     dimensionality = len(expressions)
+    count = len(data)
     if dimensionality == 1:
         # Create a one-dimensional histogram
         result = TH1F(name, title,
@@ -314,6 +324,8 @@ def _histogram(process, region, expressions, binnings, load_hints = None):
         # HACK: TH3 doesn't have a FillN method, so we have to do things the
         # slow way.
         # TODO: We may want to put a warning about this slowness
+        if weights == nullptr:
+            weights = numpy.ones(count, dtype = numpy.float64)
         for x, y, z, w in zip(samples[0], samples[1], samples[2], weights):
             result.Fill(x, y, z, w)
     else:

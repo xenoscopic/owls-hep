@@ -13,6 +13,9 @@ from six import string_types
 # Pandas imports
 from pandas import DataFrame
 
+# ROOT imports
+from ROOT import TColor
+
 # root_numpy imports
 from root_numpy import root2array, RootNumpyUnconvertibleWarning
 

@@ -82,8 +82,8 @@ def to_overall(shape, nominal):
         0 integral.
     """
     # Compute integrals
-    shape_integral = shape.Integral()
-    nominal_integral = nominal.Integral()
+    shape_integral = shape.Integral(1, shape.GetNbinsX())
+    nominal_integral = nominal.Integral(1, nominal.GetNbinsX())
 
     # Watch out for divide by 0
     # TODO: Is this the correct treatment?
@@ -189,9 +189,20 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
     """Calculates an uncertainty band (TGraphAsymmErrors) for a specific
     uncertainty.
 
-    Any uncertainties (except systematic) that have a shape component will have
-    the shape component converted to an overall component (considered in
+    Any uncertainties (except statistical) that have a shape component will
+    have the shape component converted to an overall component (considered in
     addition to any existing overall component).
+
+    NOTE: The statistical error calculated is the statistical error on the
+    estimate given the poisson statistics of the unweighted samples.  This is
+    calculated per-bin as:
+
+        uncertainty = sqrt(unweighted) * weighted / unweighted
+                    = weighted / sqrt(unweighted)
+
+    For samples such as data, where there is no weighting applied, this just
+    reduces to sqrt(weighted) = sqrt(unweighted), which is the usual
+    uncertainty applied by ROOT.
 
     NOTE: The y-component of the uncertainty band will NOT be set to bin
     content because this leads to errors in usage when combining the bands and
@@ -204,7 +215,7 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
         region: The region to consider
         calculation: The calculation, which should return a histogram
         uncertainty: The Uncertainty subclass to consider, or None to compute
-            statistical uncertainty
+            statistical uncertainty of Monte Carlo samples
         estimation: The Estimation subclass to consider
 
     Returns:
@@ -233,10 +244,17 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
             shape_overall_down = to_overall(shape_down, nominal)
             shape_down = None
     else:
-        # Compute statistical variations
+        # We're computing statistical variation, so we don't need these
         overall_up = overall_down = None
         shape_up = shape_down = None
         shape_overall_up = shape_overall_down = None
+
+        # For computing the uncertainty of weighted MC samples, we need the
+        # unweighted histogram
+        unweighted = estimation(calculation)(
+            process,
+            region.weighted(False)
+        )
 
     # Create the error band.  We pass it the nominal histogram just to get
     # the binning correct.  The graph will also extract values and errors
@@ -269,7 +287,10 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
             band.SetPointEYlow(point, 0.0)
             continue
 
-        # Create a list of fractional variations for this bin
+        # Create a list of fractional variations for this bin.  These lists
+        # will hold FRACTIONAL variations, i.e. variations normalized to bin
+        # content, and will be converted to absolute variations below when they
+        # are set as errors.
         up_variations = []
         down_variations = []
 
@@ -283,11 +304,24 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
         if shape_overall_down is not None:
             down_variations.append(1.0 - shape_overall_down)
 
-        # Add the statistical variation if uncertainty is None
+        # Add the statistical variation if uncertainty is None.  Note that we
+        # compute this for the statistics of the unweighted Monte Carlo and not
+        # the weighted bin count.
         if uncertainty is None:
-            statistical_variation = nominal.GetBinError(bin) / content
-            up_variations.append(statistical_variation)
-            down_variations.append(statistical_variation)
+            # Get the unweighted content
+            unweighted_content = unweighted.GetBinContent(bin)
+
+            # Calculate error if possible
+            if content > 0.0 and unweighted_content > 0.0:
+                # The extra factor of 1/content is just because we normalize
+                # everything to content for combining together.  It has nothing
+                # to do with the derivation of the uncertainty, and it is
+                # multipled out below.
+                statistical_variation = (
+                    content / sqrt(unweighted_content)
+                ) / content
+                up_variations.append(statistical_variation)
+                down_variations.append(statistical_variation)
 
         # Set the point and error.  Note that, since we sum things in
         # quadrature, it really doesn't matter how we compute the differences

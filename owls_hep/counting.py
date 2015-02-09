@@ -36,11 +36,15 @@ def _count(process, region):
     # Load data
     data = process.load(required_properties)
 
-    # Execute selection
-    data = data[data.eval(normalized(selection))]
+    # Apply selection if specified
+    if selection != '':
+        data = data[data.eval(normalized(selection))]
 
-    # Compute the count
-    return data.eval(normalized(weight)).sum()
+    # Compute the weighted or unweighted count
+    if weight != '':
+        return data.eval(normalized(weight)).sum()
+    else:
+        return len(data)
 
 
 class Count(Calculation):

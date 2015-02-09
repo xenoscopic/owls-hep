@@ -105,24 +105,28 @@ class Region(object):
                  selection,
                  weight,
                  label,
-                 blinded = False,
-                 metadata = None):
+                 metadata = {},
+                 weighted = True):
         """Initialized a new instance of the Region class.
 
         Args:
-            selection: A string representing selection for the region
-            weight: A string representing the weight for the region
+            selection: A string representing selection for the region, or an
+                empty string for no selection
+            weight: A string representing the weight for the region, or an
+                empty string for no weighting
             label: The ROOT TLatex label string to use when rendering the
                 region
-            blinded: Whether or not the region is marked as blinded
             metadata: A (pickleable) object containing optional metadata
+            weighted: If False, the `selection_weight` method will return an
+                empty string for weight - can be varied later using the
+                `weighted` method
         """
         # Store parameters
         self._selection = selection
         self._weight = weight
         self._label = label
-        self._blinded = blinded
         self._metadata = metadata
+        self._weighted = weighted
 
         # Create initial variations container
         self._variations = ()
@@ -130,9 +134,13 @@ class Region(object):
     def __hash__(self):
         """Returns a hash for the region.
         """
-        # Hash only weight, selection, and variations since those are all that
-        # really matter for evaluation
-        return hash((self._selection, self._weight, self._variations))
+        # Only hash those parameters which affect evaluation
+        return hash((
+            self._selection,
+            self._weight,
+            self._weighted,
+            self._variations
+        ))
 
     def label(self):
         """Returns the label for the region, if any.
@@ -140,14 +148,9 @@ class Region(object):
         return self._label
 
     def metadata(self):
-        """Returns the metadata for the region, if any.
+        """Returns metadata for this region, if any.
         """
         return self._metadata
-
-    def blinded(self):
-        """Returns whether or not the region is blinded.
-        """
-        return self._blinded
 
     def varied(self, variation):
         """Creates a copy of the region with the specified variation applied.
@@ -167,6 +170,30 @@ class Region(object):
         # All done
         return result
 
+    def weighted(self, weighting_enabled):
+        """Creates a copy of the region with weighting turned on or off.
+
+        If there is no change to the weighting, self will be returned.
+
+        Args:
+            weighting_enabled: Whether or not to enable weighting
+
+        Returns:
+            A duplicate region, but with weighting set to weighting_enabled.
+        """
+        # If there's no change, return self
+        if weighting_enabled == self._weighted:
+            return self
+
+        # Create a copy
+        result = copy(self)
+
+        # Change weighting status
+        result._weighted = weighting_enabled
+
+        # All done
+        return result
+
     def selection_weight(self):
         """Returns a tuple of (selection, weight) with all variations applied.
         """
@@ -177,5 +204,9 @@ class Region(object):
         for v in self._variations:
             selection, weight = v(selection, weight)
 
-        # Compute the combined expression
+        # If this region isn't weighted, return an empty weight
+        if not self._weighted:
+            return (selection, '')
+
+        # All done
         return (selection, weight)
