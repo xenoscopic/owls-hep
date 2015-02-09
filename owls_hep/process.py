@@ -191,7 +191,7 @@ class Process(object):
         """
         return self._metadata
 
-    def load(self, properties):
+    def load(self, properties, start = None, stop = None, step = None):
         """Loads the given properties of the process data.
 
         The tree weights of the TTrees are included in the resultant DataFrame
@@ -201,6 +201,10 @@ class Process(object):
             properties: A Python set of property names (TTree branch names) to
                 load.  'tree_weight' may be included, just for convenience, it
                 will not be treated as a branch name.
+            start, stop, step: These parameters correspond to slicing
+                parameters - i.e. [start:stop:step].  Any subset or all of them
+                may be None, which corresponds to omitting the corresponding
+                slicing parameter.
 
         Returns:
             A Pandas DataFrame containing the specified properties for the
@@ -219,6 +223,9 @@ class Process(object):
             filenames = self._files,
             treename = self._tree,
             branches = list(all_properties),
+            start = start,
+            stop = stop,
+            step = step,
             include_weight = True,
             weight_name = 'tree_weight'
         ))
