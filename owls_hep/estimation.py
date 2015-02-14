@@ -28,31 +28,65 @@ class Estimation(HigherOrderCalculation):
     override it.
     """
 
-    def combine(self, *args):
-        """Utility algebra for estimation implementations which combine
-        multiple components.
+    def components(self, process, region):
+        """Generates the components that are combined to form the background
+        estimation.
 
         Args:
-            *args: Each element of args should be a tuple of the form:
-
-                (coefficient, use_nominal, process, region)
-
-                coefficient is the scale factor to use for this component.
-                use_nominal causes this method to ignore systematic variaitons
-                for this component if the underlying calculation is an
-                uncertainty.  process and region are the values that
-                characterize this component.
+            process: The process to consider
+            region: The region to consider
 
         Returns:
-            The sum over args tuples of:
+            A list of the form:
 
-                coefficient * self.calculation(process, region)
+                [
+                    (coefficient_0, use_nominal_0, process_0, region_0),
+                    ...,
+                    (coefficient_N, use_nominal_N, process_N, region_N)
+                ]
 
-            with combination of uncertainties handled appropriately.
+            This list will be used to generate the combined result.
+            coefficient is the scale factor to use for this component.
+            use_nominal causes this method to ignore systematic variaitons for
+            this component if the underlying calculation is an uncertainty.
+            process and region are the values passed to the underlying
+            calculation.
         """
-        # Watch for empty arguments
-        if len(args) == 0:
+        raise NotImplementedError('abstract method')
+
+    def __call__(self, process, region, weighted_combination = True):
+        """Executes the background estimation scheme.
+
+        This method combines components which enter into backgruond estimation.
+        Implementers should NOT override this method.  Instead, they should
+        return a tuple of the components entering background estimation by
+        overriding the `components` method.
+
+        This method is designed to handle the following types of calculations:
+
+            - Count
+            - Histogram
+            - Uncertainty
+
+        Args:
+            process: The process to consider
+            region: The region to consider
+            weighted_combination: Whether or not to apply weights from
+                components
+
+        Returns:
+            The combined background estimation.
+        """
+        # Get components
+        components = self.components(process, region)
+
+        # Watch for empty components
+        if len(components) == 0:
             raise ValueError('must have at least one component for estimation')
+
+        # If we're not using weights, switch all coefficients to 1
+        if not weighted_combination:
+            components = [(1.0, c[1], c[2], c[3]) for c in components]
 
         # Determine if we're dealing with an uncertainty or not
         is_uncertainty = isinstance(self.calculation, Uncertainty)
@@ -88,7 +122,7 @@ class Estimation(HigherOrderCalculation):
                 )
 
         # Compute the first value which we'll use as the basis of the result
-        coefficient, use_nominal, process, region = args[0]
+        coefficient, use_nominal, process, region = components[0]
         if is_uncertainty:
             if use_nominal:
                 result = nominal(coefficient, process, region)
@@ -98,7 +132,7 @@ class Estimation(HigherOrderCalculation):
             result = multiply(coefficient, self.calculation(process, region))
 
         # Compute the remaining values
-        for coefficient, use_nominal, process, region in args[1:]:
+        for coefficient, use_nominal, process, region in components[1:]:
             if is_uncertainty:
                 if use_nominal:
                     value = nominal(coefficient, process, region)

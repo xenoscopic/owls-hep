@@ -253,7 +253,8 @@ def uncertainty_band(process, region, calculation, uncertainty, estimation):
         # unweighted histogram
         unweighted = estimation(calculation)(
             process,
-            region.weighted(False)
+            region.weighted(False),
+            weighted_combination = False
         )
 
     # Create the error band.  We pass it the nominal histogram just to get
