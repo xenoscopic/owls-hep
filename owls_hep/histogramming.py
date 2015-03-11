@@ -127,7 +127,7 @@ class Binning(object):
                                   self._n_bins + 1)
         elif self._type == 'variable':
             # Use existing edges, but ensure they are type as float
-            return numpy.array(self._edges, dtype = numpy.float)
+            return numpy.array(self._edges, dtype = numpy.float64)
 
 
 # Dummy function to return fake values when parallelizing
