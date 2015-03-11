@@ -715,8 +715,8 @@ class Plot(object):
             # Calculate the line coordinates
             line_min = histogram.GetBinLowEdge(1)
             max_bin = histogram.GetNbinsX()
-            line_max = (histogram.GetBinLowEdge(max_bin)
-                        + histogram.GetBinWidth(max_bin))
+            line_max = (histogram.GetBinLowEdge(max_bin) +
+                        histogram.GetBinWidth(max_bin))
 
             # Create and draw the line
             unit_line = TLine(line_min,
