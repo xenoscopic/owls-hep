@@ -3,7 +3,7 @@ language: python
 
 # Set up the build matrix
 # TODO: If ROOT and PyROOT eventually support later versions of Python, add them
-# into the build matrix here (3.3-3.4 would be ideal and bring parity with other
+# into the build matrix here (3.3-3.5 would be ideal and bring parity with other
 # OWLS modules).  We would need to add ROOT builds for these Python versions as
 # well, unless Travis upgrades servers to Ubuntu 14.04.  At the moment, we're
 # stuck with the custom build from the root_numpy project.
