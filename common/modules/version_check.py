@@ -14,6 +14,7 @@ def owls_python_version_check():
         (2, 7),
         (3, 3),
         (3, 4),
+        (3, 5),
     )
     if python_version not in supported_python_versions:
         exit('unsupported Python version')
