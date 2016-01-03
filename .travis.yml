@@ -2,24 +2,22 @@
 language: python
 
 # Set up the build matrix
-# TODO: If ROOT and PyROOT eventually support later versions of Python, add them
-# into the build matrix here (3.3-3.5 would be ideal and bring parity with other
-# OWLS modules).  We would need to add ROOT builds for these Python versions as
-# well, unless Travis upgrades servers to Ubuntu 14.04.  At the moment, we're
-# stuck with the custom build from the root_numpy project.
+# TODO: Would be nice to add other supported Python versions in here, but the
+# rootpy project doesn't currently provide ROOT builds for CI testing, and I'm
+# far too lazy to do that myself
 python:
   - "2.7"
+  - "3.4"
 env:
-  - ROOT=5-32-04
-  - ROOT=5-34-08
+  - ROOT=5.34.18
 
 # Install testing dependencies and the module itself
 # NOTE: We use the ROOT build provided by root_numpy:
 # https://github.com/rootpy/root_numpy/blob/master/ci/install.sh
 install:
-  - wget --no-check-certificate https://copy.com/rtIyUdxgjt7h/ci/root_builds/root_v${ROOT}_python_${TRAVIS_PYTHON_VERSION}.tar.gz
-  - tar zxf root_v${ROOT}_python_${TRAVIS_PYTHON_VERSION}.tar.gz
-  - mv root_v${ROOT}_python_${TRAVIS_PYTHON_VERSION} root
+  - wget --no-check-certificate https://copy.com/rtIyUdxgjt7h/ci/root_builds/ROOT-${ROOT}_Python-${TRAVIS_PYTHON_VERSION}_GCC-4.8_x86_64.tar.gz
+  - tar zxf ROOT-${ROOT}_Python-${TRAVIS_PYTHON_VERSION}_GCC-4.8_x86_64.tar.gz
+  - mv ROOT-${ROOT}_Python-${TRAVIS_PYTHON_VERSION}_GCC-4.8_x86_64 root
   - source root/bin/thisroot.sh
   - pip install pep8
   - pip install git+https://github.com/havoc-io/owls-cache.git
